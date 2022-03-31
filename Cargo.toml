@@ -14,16 +14,18 @@ categories = ["game-engines"]
 [dependencies]
 sdl2 = "0.34.0"
 rodio = { version = "0.11.0", optional = true, default-features = false }
-glow = "0.9.0"
+glow = "0.11.0"
 image = { version = "0.23.12", default-features = false }
-vek = { version = "0.13.1", default-features = false }
+vek = { version = "0.15.1", default-features = false }
 hashbrown = "0.11.0"
-serde = { version = "1.0.104", optional = true } 
+serde = { version = "1.0.130", optional = true } 
 ab_glyph = { version = "0.2.2", optional = true }
 xi-unicode = "0.3.0"
 bytemuck = "1.5.0"
 num-traits = "0.2.14"
 lyon_tessellation = "0.17.4"
+spin_sleep = "1.0.0"
+time = "0.3.3"
 
 [dev-dependencies]
 rand = "0.8.0"
@@ -31,16 +33,19 @@ anyhow = "1.0.33"
 
 [features]
 default = [
-    "audio",
-    "audio_mp3",
-    "audio_vorbis",
-    "audio_wav",
+    #"audio",
+    #"audio_mp3",
+    #"audio_vorbis",
+    #"audio_wav",
     "font_ttf",
     "texture_png",
-    "texture_jpeg",
-    "texture_gif",
-    "texture_bmp",
+    #"texture_jpeg",
+    #"texture_gif",
+    #"texture_bmp",
 ]
+
+
+developer = []
 
 # Enables the `tetra::audio` API. This feature can be disabled if you want to use a different
 # audio API in your game (e.g. FMod or WWise).
@@ -75,3 +80,6 @@ sdl2_bundled = ["sdl2/bundled"]
 
 # Links SDL2 statically (see https://hg.libsdl.org/SDL/file/default/docs/README-dynapi.md).
 sdl2_static_link = ["sdl2/static-link"]
+
+
+simd = ["vek/repr_simd"]

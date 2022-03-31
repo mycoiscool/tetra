@@ -3,7 +3,7 @@
 // lines may be added to Tetra itself later, but for now it's not too hard to
 // roll your own!
 
-use std::time::Duration;
+use ::time::Duration;
 
 use tetra::graphics::animation::Animation;
 use tetra::graphics::{self, Color, DrawParams, Rectangle, Texture};
@@ -33,12 +33,12 @@ impl PlayerAnimation {
                 // Remember, textures are cheap to clone, as they just point at GPU data.
                 texture.clone(),
                 Rectangle::row(0.0, 256.0, 16.0, 16.0).take(8).collect(),
-                Duration::from_secs_f64(0.1),
+                Duration::seconds_f64(0.1),
             ),
             running: Animation::new(
                 texture,
                 Rectangle::row(0.0, 272.0, 16.0, 16.0).take(8).collect(),
-                Duration::from_secs_f64(0.1),
+                Duration::seconds_f64(0.1),
             ),
         })
     }

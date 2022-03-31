@@ -1,6 +1,6 @@
 // using sprites by 0x72: https://0x72.itch.io/16x16-industrial-tileset
 
-use std::time::Duration;
+use ::time::Duration;
 
 use tetra::graphics::animation::Animation;
 use tetra::graphics::{self, Color, DrawParams, Rectangle, Texture};
@@ -17,7 +17,7 @@ impl GameState {
             animation: Animation::new(
                 Texture::new(ctx, "./examples/resources/tiles.png")?,
                 Rectangle::row(0.0, 272.0, 16.0, 16.0).take(8).collect(),
-                Duration::from_secs_f64(0.1),
+                Duration::seconds_f64(0.1),
             ),
         })
     }

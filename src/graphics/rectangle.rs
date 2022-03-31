@@ -102,6 +102,16 @@ where
             && self.y + self.height > other.y
     }
 
+
+    /// Cheaper version of intersect. For when you are only concerned about the X-axis. 
+    pub fn intersects_x(&self, other: &Rectangle<T>) -> bool 
+        where 
+            T: Add<Output = T> + PartialOrd, 
+    {
+        self.x < other.x + other.width
+        && self.x + self.width > other.x
+    }
+
     /// Returns `true` if the `other` rectangle is fully contained within `self`.
     pub fn contains(&self, other: &Rectangle<T>) -> bool
     where

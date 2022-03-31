@@ -1,8 +1,7 @@
 //! Functions and types relating to measuring and manipulating time.
 
 use std::collections::VecDeque;
-
-use std::time::Duration;
+use ::time::Duration as DurationAdv; 
 
 use crate::Context;
 
@@ -46,12 +45,38 @@ pub enum Timestep {
     Variable,
 }
 
+
+///for diagnostics
+#[cfg(feature = "developer")]
+#[derive(Clone, Debug, Copy)]
+pub struct FrameTime {
+    ///diagnostics container
+    pub array: [f64; 5]
+}
+
+#[cfg(feature = "developer")]
+impl FrameTime { 
+    ///how many frames to track
+    pub const LEN: usize = 120; 
+}
+
+///for convenience
+pub(crate) fn duration_to_frame(d: DurationAdv) -> f64 {
+    d.as_seconds_f64() *1000.0
+}
+
+
 pub(crate) struct TimeContext {
     pub(crate) fps_tracker: VecDeque<f64>,
     pub(crate) ticks_per_second: Option<f64>,
-    pub(crate) tick_rate: Option<Duration>,
-    pub(crate) delta_time: Duration,
-    pub(crate) accumulator: Duration,
+    #[cfg(feature = "developer")]
+    pub(crate) frame_time: VecDeque<FrameTime>, 
+    pub(crate) tick_rate: Option<DurationAdv>,
+
+    pub(crate) frame_rate_cap: f64, 
+
+    pub(crate) delta_time: DurationAdv,
+    pub(crate) accumulator: DurationAdv,
 }
 
 impl TimeContext {
@@ -60,6 +85,16 @@ impl TimeContext {
         // at startup.
         let mut fps_tracker = VecDeque::with_capacity(200);
         fps_tracker.resize(200, 1.0 / 60.0);
+        #[cfg(feature = "developer")]
+        let mut frame_time; 
+        #[cfg(feature = "developer")]
+        {
+            
+            frame_time = VecDeque::with_capacity(FrameTime::LEN); 
+
+            frame_time.resize(FrameTime::LEN, FrameTime {array: [0.0; 5]})
+        }
+        
 
         let ticks_per_second = match timestep {
             Timestep::Fixed(tps) => Some(tps),
@@ -67,23 +102,30 @@ impl TimeContext {
         };
 
         let tick_rate = match timestep {
-            Timestep::Fixed(tps) => Some(Duration::from_secs_f64(1.0 / tps)),
+            Timestep::Fixed(tps) => Some(DurationAdv::seconds_f64(1.0 / tps)),
             Timestep::Variable => None,
         };
 
         TimeContext {
+
+            #[cfg(feature = "developer")]
+            frame_time, 
+
             fps_tracker,
+
+            frame_rate_cap: 10.0, 
+
             ticks_per_second,
             tick_rate,
-            delta_time: Duration::from_secs(0),
-            accumulator: Duration::from_secs(0),
+            delta_time: DurationAdv::seconds(0),
+            accumulator: DurationAdv::seconds(0),
         }
     }
 }
 
 pub(crate) fn reset(ctx: &mut Context) {
-    ctx.time.delta_time = Duration::from_secs(0);
-    ctx.time.accumulator = Duration::from_secs(0);
+    ctx.time.delta_time = DurationAdv::seconds(0);
+    ctx.time.accumulator = DurationAdv::seconds(0);
 }
 
 /// Returns the amount of time that has passed since the last update or draw.
@@ -96,7 +138,7 @@ pub(crate) fn reset(ctx: &mut Context) {
 /// When using a fixed time step, calling this function during an update will always
 /// return the configured update rate. This is to prevent floating point error/non-determinism
 /// from creeping into your game's calculations!
-pub fn get_delta_time(ctx: &Context) -> Duration {
+pub fn get_delta_time(ctx: &Context) -> DurationAdv {
     ctx.time.delta_time
 }
 
@@ -106,8 +148,14 @@ pub fn get_delta_time(ctx: &Context) -> Duration {
 /// as updates occur, it will decrease.
 ///
 /// When using a variable time step, this function always returns `Duration::from_secs(0)`.
-pub fn get_accumulator(ctx: &Context) -> Duration {
+pub fn get_accumulator(ctx: &Context) -> DurationAdv {
     ctx.time.accumulator
+}
+
+
+///sets the framerate yo
+pub fn set_frame_rate(ctx: &mut Context, frame_rate: f64) {
+    ctx.time.frame_rate_cap = frame_rate; 
 }
 
 /// Returns a value between 0.0 and 1.0, representing how far between updates the game loop
@@ -123,7 +171,7 @@ pub fn get_accumulator(ctx: &Context) -> Duration {
 /// [`get_blend_factor_precise`].
 pub fn get_blend_factor(ctx: &Context) -> f32 {
     match ctx.time.tick_rate {
-        Some(tick_rate) => ctx.time.accumulator.as_secs_f32() / tick_rate.as_secs_f32(),
+        Some(_) => ctx.time.accumulator.as_seconds_f32() / Context::UPS_DURATION_SECS,
         None => 0.0,
     }
 }
@@ -141,7 +189,7 @@ pub fn get_blend_factor(ctx: &Context) -> f32 {
 /// [`get_blend_factor`] instead.
 pub fn get_blend_factor_precise(ctx: &Context) -> f64 {
     match ctx.time.tick_rate {
-        Some(tick_rate) => ctx.time.accumulator.as_secs_f64() / tick_rate.as_secs_f64(),
+        Some(tick_rate) => ctx.time.accumulator.as_seconds_f64() / tick_rate.as_seconds_f64(),
         None => 0.0,
     }
 }
@@ -162,7 +210,7 @@ pub fn set_timestep(ctx: &mut Context, timestep: Timestep) {
     };
 
     ctx.time.tick_rate = match timestep {
-        Timestep::Fixed(tps) => Some(Duration::from_secs_f64(1.0 / tps)),
+        Timestep::Fixed(tps) => Some(DurationAdv::seconds_f64(1.0 / tps)),
         Timestep::Variable => None,
     };
 }
@@ -170,4 +218,13 @@ pub fn set_timestep(ctx: &mut Context, timestep: Timestep) {
 /// Returns the current frame rate, averaged out over the last 200 frames.
 pub fn get_fps(ctx: &Context) -> f64 {
     1.0 / (ctx.time.fps_tracker.iter().sum::<f64>() / ctx.time.fps_tracker.len() as f64)
+}
+
+
+///for retrieval
+#[cfg(feature = "developer")]
+pub fn get_frame_time(ctx: &Context) -> &VecDeque<FrameTime> {
+
+    &ctx.time.frame_time
+
 }

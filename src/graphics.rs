@@ -231,8 +231,10 @@ pub fn set_blend_mode(ctx: &mut Context, blend_mode: BlendMode) {
     if blend_mode != ctx.graphics.blend_mode {
         flush(ctx);
         ctx.graphics.blend_mode = blend_mode;
+
+        ctx.device.set_blend_mode(blend_mode);
     }
-    ctx.device.set_blend_mode(blend_mode);
+
 }
 
 /// Resets the blend mode to the default.
@@ -366,6 +368,7 @@ pub fn flush(ctx: &mut Context) {
     }
 }
 
+
 /// Presents the result of drawing commands to the screen.
 ///
 /// If any custom shaders/canvases are set, this function will unset them -
@@ -376,7 +379,14 @@ pub fn flush(ctx: &mut Context) {
 pub fn present(ctx: &mut Context) {
     flush(ctx);
 
+
+    //let time = Instant::now(); 
     ctx.window.swap_buffers();
+    //thread::sleep(Duration::from_nanos(1));
+    //if time.elapsed().as_nanos() > 500000 {
+    //    println!("time: {}", time.elapsed().as_nanos()); 
+    //}
+    
 }
 
 /// Returns the filter mode that will be used by newly created textures and canvases.

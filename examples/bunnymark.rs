@@ -8,13 +8,15 @@ use tetra::math::Vec2;
 use tetra::time;
 use tetra::window;
 use tetra::{Context, ContextBuilder, State};
+use tetra::time::Timestep;
 
 // NOTE: Using a high number here yields worse performance than adding more bunnies over
 // time - I think this is due to all of the RNG being run on the same tick...
-const INITIAL_BUNNIES: usize = 100;
+const INITIAL_BUNNIES: usize = 1000;
 const WIDTH: i32 = 1280;
 const HEIGHT: i32 = 720;
 const GRAVITY: f32 = 0.5;
+
 
 struct Bunny {
     position: Vec2<f32>,
@@ -131,6 +133,7 @@ impl State for GameState {
 fn main() -> tetra::Result {
     ContextBuilder::new("BunnyMark", WIDTH, HEIGHT)
         .quit_on_escape(true)
+        .timestep(Timestep::Fixed(60.0))
         .build()?
         .run(GameState::new)
 }

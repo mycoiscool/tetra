@@ -1,5 +1,6 @@
 use super::Rectangle;
 use crate::input;
+
 use crate::math::{Mat4, Vec2, Vec3};
 use crate::window;
 use crate::Context;
@@ -63,7 +64,7 @@ impl Camera {
     /// (e.g. the screen, or a [`Canvas`](crate::graphics::Canvas)).
     pub fn new(viewport_width: f32, viewport_height: f32) -> Camera {
         Camera {
-            position: Vec2::zero(),
+            position: Vec2::zero().into(),
             rotation: 0.0,
             scale: Vec2::one(),
             viewport_width,
@@ -101,7 +102,18 @@ impl Camera {
     /// Recalculates the transformation matrix, based on the data currently contained
     /// within the camera.
     pub fn update(&mut self) {
-        self.matrix = Mat4::translation_2d(-self.position);
+
+        //self.position = (self.position * self.scale).round() / self.scale; 
+
+        //let position = self.position.lerp_scale(
+
+        //self.position.start_frame(); 
+
+        //let position = self.position.lerp_scale(interpolation, self.scale.x); 
+
+        let position = (self.position * self.scale.x).round() / self.scale.x; 
+
+        self.matrix = Mat4::translation_2d(-position);
         self.matrix.rotate_z(self.rotation);
         self.matrix
             .scale_3d(Vec3::new(self.scale.x, self.scale.y, 1.0));
@@ -242,7 +254,7 @@ mod tests {
         assert_eq!(proj_initial, Vec2::new(-64.0, -128.0));
         assert_eq!(unproj_initial, Vec2::zero());
 
-        camera.position = Vec2::new(16.0, 16.0);
+        camera.position = Vec2::new(16.0, 16.0).into();
 
         let proj_positioned = camera.project(Vec2::zero());
         let unproj_positioned = camera.unproject(proj_positioned);
@@ -300,7 +312,7 @@ mod tests {
         );
 
         // Moving the camera will simply move the x/y position
-        camera.position = Vec2::new(-100.0, 100.0);
+        camera.position = Vec2::new(-100.0, 100.0).into();
 
         assert_eq!(
             camera.visible_rect(),

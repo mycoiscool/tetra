@@ -1,6 +1,8 @@
 //! Functions and types relating to animations.
 
-use std::time::Duration;
+//use std::time::Duration;
+
+use ::time::Duration; 
 
 use crate::graphics::texture::Texture;
 use crate::graphics::{DrawParams, Rectangle};
@@ -41,7 +43,7 @@ impl Animation {
             frame_length,
 
             current_frame: 0,
-            timer: Duration::from_secs(0),
+            timer: Duration::seconds(0),
             repeating: true,
         }
     }
@@ -54,7 +56,7 @@ impl Animation {
             frame_length,
 
             current_frame: 0,
-            timer: Duration::from_secs(0),
+            timer: Duration::seconds(0),
             repeating: false,
         }
     }
@@ -100,7 +102,7 @@ impl Animation {
     /// Restarts the animation from the first frame.
     pub fn restart(&mut self) {
         self.current_frame = 0;
-        self.timer = Duration::from_secs(0);
+        self.timer = Duration::seconds(0);
     }
 
     /// Returns a reference to the texture currently being used by the animation.
