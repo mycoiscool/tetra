@@ -1,6 +1,6 @@
 //! Functions and types relating to the game window, and the environment it is running in.
 
-use crate::{Context, Result};
+use crate::{graphics::ImageData, Context, Result};
 
 /// Quits the game, if it is currently running.
 ///
@@ -8,6 +8,30 @@ use crate::{Context, Result};
 /// cycle of the game loop. This will probably change later.
 pub fn quit(ctx: &mut Context) {
     ctx.running = false;
+}
+
+/// Maximizes the window.
+pub fn maximize(ctx: &mut Context) {
+    ctx.window.maximize();
+}
+
+/// Minimizes the window.
+pub fn minimize(ctx: &mut Context) {
+    ctx.window.minimize();
+}
+
+/// Restores the size and position of a minimized or maximized window.
+pub fn restore(ctx: &mut Context) {
+    ctx.window.restore();
+}
+
+/// Brings the window to the front and gives it input focus.
+///
+/// Keep in mind that stealing focus from another application can be extremely disruptive.
+/// You should avoid doing this unless you're certain it is what the user wants.
+pub fn focus(ctx: &mut Context) {
+    // TODO: Add support for SDL_FlashWindow once 2.0.16 is more widely available.
+    ctx.window.focus();
 }
 
 /// Gets the current title of the window.
@@ -104,6 +128,54 @@ pub fn get_physical_size(ctx: &Context) -> (i32, i32) {
     ctx.window.get_physical_size()
 }
 
+/// Sets the minimum size of the window.
+///
+/// # Errors
+///
+/// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be returned
+/// if the specified size was invalid.
+pub fn set_minimum_size(ctx: &mut Context, width: i32, height: i32) -> Result {
+    ctx.window.set_minimum_size(width, height)
+}
+
+/// Gets the minimum size of the window.
+pub fn get_minimum_size(ctx: &Context) -> (i32, i32) {
+    ctx.window.get_minimum_size()
+}
+
+/// Sets the maximum size of the window.
+///
+/// # Errors
+///
+/// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be returned
+/// if the specified size was invalid.
+pub fn set_maximum_size(ctx: &mut Context, width: i32, height: i32) -> Result {
+    ctx.window.set_maximum_size(width, height)
+}
+
+/// Gets the maximum size of the window.
+pub fn get_maximum_size(ctx: &Context) -> (i32, i32) {
+    ctx.window.get_maximum_size()
+}
+
+/// Sets the position of the window.
+///
+/// You can either pass the co-ordinates to this function as `i32`s, or
+/// use the `WindowPosition` enum for more fine-grained control over
+/// where the window ends up.
+pub fn set_position<X, Y>(ctx: &mut Context, x: X, y: Y)
+where
+    X: Into<WindowPosition>,
+    Y: Into<WindowPosition>,
+{
+    ctx.window.set_position(x.into(), y.into());
+}
+
+/// Gets the position of the window.
+pub fn get_position(ctx: &Context) -> (i32, i32) {
+    ctx.window.get_position()
+}
+
 /// Returns the ratio of the logical resolution to the physical resolution of the current
 /// display on which the window is being displayed.
 ///
@@ -112,6 +184,29 @@ pub fn get_physical_size(ctx: &Context) -> (i32, i32) {
 /// a retina display, this can return `2.0`.
 pub fn get_dpi_scale(ctx: &Context) -> f32 {
     ctx.window.get_dpi_scale()
+}
+
+/// Sets whether or not the window should have decorations, such as a border and
+/// a close button.
+pub fn set_decorated(ctx: &mut Context, bordered: bool) {
+    ctx.window.set_decorated(bordered);
+}
+
+/// Sets the icon for the window.
+///
+/// Note that the preferred way of setting the icon is as part of packaging your game,
+/// as detailed in the '[Distributing](https://tetra.seventeencups.net/distributing#change-the-games-iconmetadata)'
+/// page of Tetra's documentation, as this allows for the icon to be displayed
+/// in more places (system menus, file managers, etc) and for multiple
+/// resolutions to be provided. This function is mainly useful if you
+/// wish to change the icon once the application is already running.  
+///
+/// # Errors
+///
+/// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be returned
+/// if the icon could not be set.
+pub fn set_icon(ctx: &mut Context, data: &mut ImageData) -> Result {
+    ctx.window.set_icon(data)
 }
 
 /// Returns whether the window is currently visible, or whether it has been hidden.
@@ -344,4 +439,27 @@ pub fn set_key_repeat_enabled(ctx: &mut Context, key_repeat_enabled: bool) {
 /// continuously while the key is held down.
 pub fn is_key_repeat_enabled(ctx: &Context) -> bool {
     ctx.window.is_key_repeat_enabled()
+}
+
+/// Represents the position of a window on the screen.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowPosition {
+    /// Positions the window at the given screen co-ordinate.
+    ///
+    /// For example, `WindowPosition::Positioned(0)` would position the window
+    /// at the top/left of the screen space.
+    Positioned(i32),
+
+    /// Positions the window at the center of a monitor, identified by its index.
+    ///
+    /// For example, `WindowPosition::Centered(0)` would position the window
+    /// at the center of the user's primary monitor.
+    Centered(i32),
+}
+
+impl From<i32> for WindowPosition {
+    fn from(val: i32) -> Self {
+        WindowPosition::Positioned(val)
+    }
 }

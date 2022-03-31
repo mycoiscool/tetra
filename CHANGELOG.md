@@ -6,7 +6,88 @@ From 0.4.0 onwards, all breaking changes will be explicitly labelled, to make it
 
 This project adheres to Semantic Versioning.
 
-# [0.6.5] - 2021-05-26
+## [0.7.0] - 2022-03-23
+
+### Added
+
+* `Texture`, `Canvas` and `ImageData` can now be created with different underlying data formats.
+* Vector fonts can now be generated with premultiplied alpha.
+* `Color::clamp` can be used to clamp a color's components between 0 and 1.
+
+### Changed
+
+* **Breaking:** This crate now uses Rust 2021, and therefore requires at least Rust 1.56.
+* **Breaking:** Most enums in the API are now marked as `non_exhaustive`, and so must have a wildcard arm when matching on them.
+    * This is to make it so adding a new enum variant is not a breaking change in the future.
+* **Breaking:** The naming scheme for various constructors has been changed to be more consistent/simple:
+    * `new` usually involves loading from a file path (as this is the most common use-case).
+    * `from_data` loads from raw data, without any specific file-type encoding (e.g. RGBA8 pixels).
+    * `from_encoded` loads from encoded data in a supported file format (e.g. PNG).
+    * This applies to `Texture`, `ImageData`, `Sound` and `BmFontBuilder`.
+* **Breaking:** `BlendMode` and `BlendAlphaMode` have been replaced with `BlendState`, `BlendFactor` and `BlendOperation`, which give you much lower-level control of how colors are blended.
+    * As such, `graphics::set_blend_mode` and `graphics::reset_blend_mode` have been renamed to `graphics::set_blend_state` and `graphics::reset_blend_state` respectively.
+    * The old presets for blending behaviour are still available as `const` constructors on `BlendState`, so you should be able to migrate without any changes in behaviour.
+* **Breaking:** Updated `vek` to 0.15.
+* **Breaking:** Updated `rodio` to 0.15.
+* Updated `hashbrown` to 0.12.
+* `Color` operations are no longer saturating.
+    * This is so that HDR colors can be represented without data loss.
+* `KeyModifier`'s behaviour has been reverted to be layout-based rather than position-based.
+    * This better matches the expected behaviour for keyboard shortcuts (which is the primary use case for this type), and the behaviour of the underlying platform code.
+* The transparent padding between font glyphs is now incorporated into the rendered quads. This prevents texture filtering/anti-aliasing from cutting off unnaturally at the edges.
+
+### Removed
+
+* **Breaking:** `Canvas::multisampled` has been removed - use `Canvas::builder` instead.
+* **Breaking:** `Texture::from_rgba` has been removed - use `Texture::from_data` instead.
+* **Breaking:** `ImageData::from_rgba` has been removed - use `ImageData::from_data` instead.
+* **Breaking:** `BmFontBuilder::with_page_rgba` has been removed - use `BmFontBuilder::with_page_data` instead.
+* `Key`s that don't represent a physical position on the keyboard have been removed - you should either switch to the `Key` for the position you want, or switch to `KeyLabel` if you still want to use the system keyboard layout.
+
+### Fixed
+
+* `Shader::from_vertex_string` and `Shader::from_fragment_string` no longer have an unused type parameter. ([@LiquidityC](https://github.com/LiquidityC) in [#301](https://github.com/17cupsofcoffee/tetra/pull/301))
+
+## [0.6.7] - 2021-11-05
+
+### Changed
+
+* The backend for gamepad vibration has been rewritten, and now supports a wider range of controllers (including DualShock 4).
+* `time::get_fps` no longer pre-fills the buffer it uses for averaging the FPS at startup.
+    * Previously, the whole buffer would be initialized to 60fps, with the intent being that the initial output would be less jittery. However, this didn't actually help that much, and it didn't work well if the monitor wasn't vsync-ed to 60hz.
+* Updated `sdl2` to 0.35.
+
+### Fixed
+
+* Tetra no longer fails to compile when built in a project with `edition = "2021"` or `resolver = "2"` in the Cargo.toml.
+* The `Display` implementation for `TetraError` now includes extra details for errors that don't have a `source`.
+* Games will no longer fail to start on platforms that do not support setting vsync on or off.
+
+## [0.6.6] - 2021-10-10
+
+### Added
+
+* `window::set_icon` has been added, allowing for the window's icon to be changed at runtime.
+    * In general, it's preferable to set the icons via your [application's packaging](https://tetra.seventeencups.net/distributing#change-the-games-iconmetadata) - this function should only be used if the icon needs to change at runtime, or if you're feeling lazy and don't feel like setting up proper packaging.
+* Various utility functions have been added to the `window` module, allowing for control over window positioning and size. ([@Tairesh](https://github.com/Tairesh) in [#278](https://github.com/17cupsofcoffee/tetra/pull/278))
+* An example of using ECS libraries with Tetra has been added. ([@rghartmann](https://github.com/rghartmann) in [#268](https://github.com/17cupsofcoffee/tetra/pull/268))
+* A `KeyLabel` type has been added, which represents how keys are labelled in the current keyboard layout.
+* `input::get_key_with_label` and `input::get_key_label` have been added, so that keys can be mapped to and from the current system keyboard layout.
+
+### Changed
+
+* `Key` now represents the physical position of a key, rather than how it is labelled. This allows for non-QWERTY keyboard layouts to be supported without extra work on the developer's part.
+* `KeyModifier` now implements `Display`.
+* The `ContextBuilder::key_repeat` setting now applies to the input polling APIs as well as events. ([@Tairesh](https://github.com/Tairesh) in [#279](https://github.com/17cupsofcoffee/tetra/pull/279))
+    * This is in order to make the API more consistent - now, whenever there is an `Event::KeyPressed`, it is guarenteed to also be returned via `is_key_pressed` and `get_keys_pressed`.
+    * The behaviour with `key_repeat` turned off is unchanged.
+* Updated `glow` to 0.11.
+
+### Fixed
+
+* Fixed an issue where the blend mode was getting set on the GPU even when it hadn't changed.
+
+## [0.6.5] - 2021-05-26
 
 ### Added 
 
@@ -18,7 +99,7 @@ This project adheres to Semantic Versioning.
 * Switching away from a non-multisampled canvas no longer resolves the canvas.
     * This was a regression due to a refactor in 0.6.3 - it should not have caused any change to the rendered image, but may have negatively impacted performance.
 
-# [0.6.4] - 2021-05-14
+## [0.6.4] - 2021-05-14
 
 ### Added
 
@@ -807,7 +888,10 @@ for. This can be useful when implementing more complex animation behaviors. ([@V
 
 * Initial release!
 
-[Upcoming]: https://github.com/17cupsofcoffee/tetra/compare/0.6.5..HEAD
+[Upcoming]: https://github.com/17cupsofcoffee/tetra/compare/0.7.0..HEAD
+[0.7.0]: https://github.com/17cupsofcoffee/tetra/compare/0.6.7..0.7.0
+[0.6.7]: https://github.com/17cupsofcoffee/tetra/compare/0.6.6..0.6.7
+[0.6.6]: https://github.com/17cupsofcoffee/tetra/compare/0.6.5..0.6.6
 [0.6.5]: https://github.com/17cupsofcoffee/tetra/compare/0.6.4..0.6.5
 [0.6.4]: https://github.com/17cupsofcoffee/tetra/compare/0.6.3..0.6.4
 [0.6.3]: https://github.com/17cupsofcoffee/tetra/compare/0.6.2..0.6.3

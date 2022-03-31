@@ -4,12 +4,8 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 
-use image::{EncodableLayout, Rgba, RgbaImage, SubImage};
-
-use crate::error::{Result, TetraError};
-use crate::fs;
-use crate::graphics::{self, Color, DrawParams, Rectangle};
-use crate::math::Vec2;
+use crate::error::Result;
+use crate::graphics::{self, DrawParams, ImageData, Rectangle};
 use crate::platform::{GraphicsDevice, RawTexture};
 use crate::Context;
 
@@ -30,9 +26,14 @@ impl PartialEq for TextureSharedData {
 
 /// A texture, held in GPU memory.
 ///
-/// # Supported Formats
+/// The data can be stored in a variety of formats, as represented by the
+/// [`TextureFormat`] enum.
 ///
-/// Various file formats are supported, and can be enabled or disabled via Cargo features:
+/// # Supported File Formats
+///
+/// Images can be decoded from various common file formats via the [`new`](Texture::new)
+/// and [`from_encoded`](Texture::from_encoded) constructors. Individual
+/// decoders can be enabled or disabled via Cargo feature flags.
 ///
 /// | Format | Cargo feature | Enabled by default? |
 /// |-|-|-|
@@ -49,13 +50,12 @@ impl PartialEq for TextureSharedData {
 ///
 /// # Performance
 ///
-/// Creating a `Texture` is a relatively expensive operation. If you can, store them in your
-/// [`State`](crate::State) struct rather than recreating them each frame.
+/// Creating a texture is quite an expensive operation, as it involves 'uploading' the texture
+/// data to the GPU. Try to reuse textures, rather than recreating them every frame.
 ///
-/// Cloning a `Texture` is a very cheap operation, as the underlying data is shared between the
-/// original instance and the clone via [reference-counting](https://doc.rust-lang.org/std/rc/struct.Rc.html).
-/// This does mean, however, that updating a `Texture` (for example, changing its filter mode) will also
-/// update any other clones of that `Texture`.
+/// You can clone a texture cheaply, as it is a [reference-counted](https://doc.rust-lang.org/std/rc/struct.Rc.html)
+/// handle to a GPU resource. However, this does mean that modifying a texture (e.g.
+/// setting the filter mode) will also affect any clones that exist of it.
 ///
 /// # Examples
 ///
@@ -73,15 +73,50 @@ impl Texture {
     ///
     /// # Errors
     ///
-    /// * [`TetraError::PlatformError`] will be returned if the underlying graphics API encounters an error.
-    /// * [`TetraError::FailedToLoadAsset`] will be returned if the file could not be loaded.
-    /// * [`TetraError::InvalidTexture`] will be returned if the texture data was invalid.
+    /// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be returned
+    /// if the underlying graphics API encounters an error.
+    /// * [`TetraError::FailedToLoadAsset`](crate::TetraError::FailedToLoadAsset) will be
+    /// returned if the file could not be loaded.
+    /// * [`TetraError::InvalidTexture`](crate::TetraError::InvalidTexture) will be returned
+    /// if the texture data was invalid.
     pub fn new<P>(ctx: &mut Context, path: P) -> Result<Texture>
     where
         P: AsRef<Path>,
     {
-        let data = ImageData::from_file(path)?;
+        let data = ImageData::new(path)?;
         Texture::from_image_data(ctx, &data)
+    }
+
+    /// Creates a new texture from a slice of pixel data.
+    ///
+    /// This is useful if you wish to create a texture at runtime.
+    ///
+    /// This method requires you to provide enough data to fill the texture.
+    /// If you provide too little data, an error will be returned.
+    /// If you provide too much data, it will be truncated.
+    ///
+    /// # Errors
+    ///
+    /// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be returned
+    /// if the underlying graphics API encounters an error.
+    /// * [`TetraError::NotEnoughData`](crate::TetraError::NotEnoughData) will be returned
+    /// if not enough data is provided to fill the texture. This is to prevent the
+    /// graphics API from trying to read uninitialized memory.
+    pub fn from_data(
+        ctx: &mut Context,
+        width: i32,
+        height: i32,
+        format: TextureFormat,
+        data: &[u8],
+    ) -> Result<Texture> {
+        Texture::with_device(
+            &mut ctx.device,
+            width,
+            height,
+            data,
+            format,
+            ctx.graphics.default_filter_mode,
+        )
     }
 
     /// Creates a new texture from a slice of data, encoded in one of Tetra's supported
@@ -97,10 +132,12 @@ impl Texture {
     ///
     /// # Errors
     ///
-    /// * [`TetraError::PlatformError`] will be returned if the underlying graphics API encounters an error.
-    /// * [`TetraError::InvalidTexture`] will be returned if the texture data was invalid.
-    pub fn from_file_data(ctx: &mut Context, data: &[u8]) -> Result<Texture> {
-        let data = ImageData::from_file_data(data)?;
+    /// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be
+    /// returned if the underlying graphics API encounters an error.
+    /// * [`TetraError::InvalidTexture`](crate::TetraError::InvalidTexture) will be
+    /// returned if the texture data was invalid.
+    pub fn from_encoded(ctx: &mut Context, data: &[u8]) -> Result<Texture> {
+        let data = ImageData::from_encoded(data)?;
         Texture::from_image_data(ctx, &data)
     }
 
@@ -108,31 +145,15 @@ impl Texture {
     ///
     /// # Errors
     ///
-    /// * [`TetraError::PlatformError`] will be returned if the underlying graphics API encounters an error.
+    /// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be returned
+    /// if the underlying graphics API encounters an error.
     pub fn from_image_data(ctx: &mut Context, data: &ImageData) -> Result<Texture> {
-        Texture::from_rgba(ctx, data.width(), data.height(), data.as_bytes())
-    }
-
-    /// Creates a new texture from a slice of RGBA pixel data.
-    ///
-    /// This is useful if you wish to create a texture at runtime.
-    ///
-    /// This method requires you to provide enough data to fill the texture.
-    /// If you provide too little data, an error will be returned.
-    /// If you provide too much data, it will be truncated.
-    ///
-    /// # Errors
-    ///
-    /// * [`TetraError::PlatformError`] will be returned if the underlying graphics API encounters an error.
-    /// * [`TetraError::NotEnoughData`] will be returned if not enough data is provided to fill
-    /// the texture. This is to prevent the graphics API from trying to read uninitialized memory.
-    pub fn from_rgba(ctx: &mut Context, width: i32, height: i32, data: &[u8]) -> Result<Texture> {
-        Texture::with_device(
-            &mut ctx.device,
-            width,
-            height,
-            data,
-            ctx.graphics.default_filter_mode,
+        Texture::from_data(
+            ctx,
+            data.width(),
+            data.height(),
+            TextureFormat::Rgba8,
+            data.as_bytes(),
         )
     }
 
@@ -150,11 +171,12 @@ impl Texture {
         width: i32,
         height: i32,
         data: &[u8],
+        format: TextureFormat,
         filter_mode: FilterMode,
     ) -> Result<Texture> {
-        let handle = device.new_texture(width, height, filter_mode)?;
+        let handle = device.new_texture(width, height, format, filter_mode)?;
 
-        device.set_texture_data(&handle, &data, 0, 0, width, height)?;
+        device.set_texture_data(&handle, data, 0, 0, width, height)?;
 
         Ok(Texture {
             data: Rc::new(TextureSharedData {
@@ -174,7 +196,14 @@ impl Texture {
         // for now.
         let data = vec![0; (width * height * 4) as usize];
 
-        Texture::with_device(device, width, height, &data, filter_mode)
+        Texture::with_device(
+            device,
+            width,
+            height,
+            &data,
+            TextureFormat::Rgba8,
+            filter_mode,
+        )
     }
 
     /// Draws the texture to the screen (or to a canvas, if one is enabled).
@@ -304,6 +333,11 @@ impl Texture {
         (self.data.handle.width(), self.data.handle.height())
     }
 
+    /// Returns the data format of the texture.
+    pub fn format(&self) -> TextureFormat {
+        self.data.handle.format()
+    }
+
     /// Returns the filter mode being used by the texture.
     pub fn filter_mode(&self) -> FilterMode {
         self.data.filter_mode.get()
@@ -322,14 +356,21 @@ impl Texture {
     /// This can be useful if you need to do some image processing on the CPU,
     /// or if you want to output the image data somewhere. This is a fairly
     /// slow operation, so avoid doing it too often!
+    ///
+    /// The returned [`ImageData`] will have the same format as the texture itself.
     pub fn get_data(&self, ctx: &mut Context) -> ImageData {
+        // TODO: Should there be a version of this that converts to a different format?
+
         let (width, height) = self.size();
         let buffer = ctx.device.get_texture_data(&self.data.handle);
 
-        ImageData::from_rgba8(width, height, buffer).expect("buffer should be exact size for image")
+        ImageData::from_data(width, height, self.format(), buffer)
+            .expect("buffer should be exact size for image")
     }
 
-    /// Writes RGBA pixel data to a specified region of the texture.
+    /// Writes pixel data to a specified region of the texture.
+    ///
+    /// The data will be interpreted based on the [`TextureFormat`] of the texture.
     ///
     /// This method requires you to provide enough data to fill the target rectangle.
     /// If you provide too little data, an error will be returned.
@@ -340,9 +381,9 @@ impl Texture {
     ///
     /// # Errors
     ///
-    /// * [`TetraError::NotEnoughData`] will be returned if not enough data is provided to fill
-    /// the target rectangle. This is to prevent the graphics API from trying to read
-    /// uninitialized memory.
+    /// * [`TetraError::NotEnoughData`](crate::TetraError::NotEnoughData) will be returned if
+    /// not enough data is provided to fill the target rectangle. This is to prevent the
+    /// graphics API from trying to read uninitialized memory.
     ///
     /// # Panics
     ///
@@ -357,7 +398,7 @@ impl Texture {
         data: &[u8],
     ) -> Result {
         ctx.device
-            .set_texture_data(&self.data.handle, &data, x, y, width, height)
+            .set_texture_data(&self.data.handle, data, x, y, width, height)
     }
 
     /// Overwrites the entire texture with new RGBA pixel data.
@@ -371,17 +412,50 @@ impl Texture {
     ///
     /// # Errors
     ///
-    /// * [`TetraError::NotEnoughData`] will be returned if not enough data is provided to fill
-    /// the texture. This is to prevent the graphics API from trying to read uninitialized memory.
+    /// * [`TetraError::NotEnoughData`](crate::TetraError::NotEnoughData) will be returned if not
+    /// enough data is provided to fill the texture. This is to prevent the graphics API from
+    /// trying to read uninitialized memory.
     pub fn replace_data(&self, ctx: &mut Context, data: &[u8]) -> Result {
         let (width, height) = self.size();
         self.set_data(ctx, 0, 0, width, height, data)
     }
 }
 
+/// In-memory data formats for textures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TextureFormat {
+    /// RGBA data, with 8 bits per channel (32 bits per pixel).
+    ///
+    /// This is the default texture format.
+    Rgba8,
+
+    /// Red channel data (8 bits per pixel).
+    R8,
+
+    /// Red and green channel data, with 8 bits per channel (16 bits per pixel).
+    Rg8,
+
+    /// Floating point RGBA data, with 16 bits per channel (64 bits per pixel).
+    Rgba16F,
+}
+
+impl TextureFormat {
+    /// Returns the number of bytes per pixel for this format.
+    pub fn stride(self) -> usize {
+        match self {
+            TextureFormat::Rgba8 => 4,
+            TextureFormat::R8 => 1,
+            TextureFormat::Rg8 => 2,
+            TextureFormat::Rgba16F => 8,
+        }
+    }
+}
+
 /// Filtering algorithms that can be used when scaling an image.
 ///
 /// Tetra currently defaults to using `Nearest` for all newly created textures.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterMode {
     /// Nearest-neighbor interpolation. This preserves hard edges and details, but may look pixelated.
@@ -441,206 +515,5 @@ impl NineSlice {
             top: border,
             bottom: border,
         }
-    }
-}
-
-/// Raw image data.
-///
-/// # Supported Formats
-///
-/// Various file formats are supported, and can be enabled or disabled via Cargo features:
-///
-/// | Format | Cargo feature | Enabled by default? |
-/// |-|-|-|
-/// | PNG | `texture_png` | Yes |
-/// | JPEG | `texture_jpeg` | Yes |
-/// | GIF | `texture_gif` | Yes |
-/// | BMP | `texture_bmp` | Yes |
-/// | TIFF | `texture_tiff` | No |
-/// | TGA | `texture_tga` | No |
-/// | WebP | `texture_webp` | No |
-/// | ICO | `texture_ico` | No |
-/// | PNM | `texture_pnm` | No |
-/// | DDS/DXT | `texture_dds` | No |
-///
-/// # Performance
-///
-/// Creating or cloning an `ImageData` is a relatively expensive operation. If you can, store them in your
-/// [`State`](crate::State) struct rather than recreating them each frame.
-#[derive(Debug, Clone)]
-pub struct ImageData {
-    data: RgbaImage,
-}
-
-impl ImageData {
-    /// Loads image data from the given file.
-    ///
-    /// The format will be determined based on the file extension.
-    ///
-    /// # Errors
-    ///
-    /// * [`TetraError::FailedToLoadAsset`] will be returned if the file could not be loaded.
-    /// * [`TetraError::InvalidTexture`] will be returned if the image data was invalid.
-    pub fn from_file<P>(path: P) -> Result<ImageData>
-    where
-        P: AsRef<Path>,
-    {
-        Ok(ImageData {
-            data: fs::read_to_image(path)?.into_rgba8(),
-        })
-    }
-
-    /// Decodes image data that is encoded in one of Tetra's supported
-    /// file formats (except for TGA).
-    ///
-    /// This is useful in combination with [`include_bytes`](std::include_bytes), as it
-    /// allows you to include your image data directly in the binary.
-    ///
-    /// The format will be determined based on the 'magic bytes' at the beginning of the
-    /// data. Note that TGA files do not have recognizable magic bytes, so this function
-    /// will not recognize them.
-    ///
-    /// # Errors
-    ///
-    /// * [`TetraError::InvalidTexture`] will be returned if the image data was invalid.
-    pub fn from_file_data(data: &[u8]) -> Result<ImageData> {
-        let image = image::load_from_memory(data)
-            .map_err(TetraError::InvalidTexture)?
-            .into_rgba8();
-
-        Ok(ImageData { data: image })
-    }
-
-    /// Creates an `ImageData` from raw RGBA8 data.
-    ///
-    /// This function takes `Into<Vec<u8>>`. If you pass a `Vec<u8>`, that `Vec` will
-    /// be reused for the created `ImageData` without reallocating. Otherwise, the data
-    /// will be copied.
-    ///
-    /// This function requires you to provide enough data to fill the image's bounds.
-    /// If you provide too little data, an error will be returned.
-    /// If you provide too much data, it will be truncated.
-    ///
-    /// # Errors
-    ///
-    /// * [`TetraError::NotEnoughData`] will be returned if not enough data is provided to fill
-    /// the image.
-    pub fn from_rgba8<D>(width: i32, height: i32, data: D) -> Result<ImageData>
-    where
-        D: Into<Vec<u8>>,
-    {
-        let data = data.into();
-
-        let expected = (width * height * 4) as usize;
-        let actual = data.len();
-
-        if actual < expected {
-            return Err(TetraError::NotEnoughData { expected, actual });
-        }
-
-        let image = RgbaImage::from_vec(width as u32, height as u32, data).unwrap();
-
-        Ok(ImageData { data: image })
-    }
-
-    #[allow(missing_docs)]
-    #[deprecated(since = "0.6.4", note = "renamed to from_rgba8 for consistency")]
-    pub fn from_rgba<D>(width: i32, height: i32, data: D) -> Result<ImageData>
-    where
-        D: Into<Vec<u8>>,
-    {
-        ImageData::from_rgba8(width, height, data)
-    }
-
-    /// Returns the width of the image.
-    pub fn width(&self) -> i32 {
-        self.data.width() as i32
-    }
-
-    /// Returns the height of the image.
-    pub fn height(&self) -> i32 {
-        self.data.height() as i32
-    }
-
-    /// Returns the size of the image.
-    pub fn size(&self) -> (i32, i32) {
-        let (width, height) = self.data.dimensions();
-        (width as i32, height as i32)
-    }
-
-    /// Returns the image's data, as a slice of raw bytes.
-    pub fn as_bytes(&self) -> &[u8] {
-        self.data.as_bytes()
-    }
-
-    /// Returns the image's underlying buffer.
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.data.into_raw()
-    }
-
-    /// Creates a new `ImageData` from a region.
-    ///
-    /// This will copy the data into a new buffer - as such, calling this function
-    /// can be expensive!
-    pub fn region(&self, region: Rectangle<i32>) -> ImageData {
-        let subimage = SubImage::new(
-            &self.data,
-            region.x as u32,
-            region.y as u32,
-            region.width as u32,
-            region.height as u32,
-        );
-
-        let data = subimage.to_image();
-
-        ImageData { data }
-    }
-
-    /// Creates a new [`Texture`] from the stored data.
-    ///
-    /// # Errors
-    ///
-    /// * [`TetraError::PlatformError`] will be returned if the underlying graphics API encounters an error.
-    pub fn to_texture(&self, ctx: &mut Context) -> Result<Texture> {
-        Texture::from_image_data(ctx, self)
-    }
-
-    /// Gets the color of the pixel at the specified location.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the location is outside the bounds of the image.
-    pub fn get_pixel_color(&self, position: Vec2<i32>) -> Color {
-        let pixel = self.data.get_pixel(position.x as u32, position.y as u32).0;
-        pixel.into()
-    }
-
-    /// Sets the color of the pixel at the specified location.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the location is outside the bounds of the image.
-    pub fn set_pixel_color(&mut self, position: Vec2<i32>, color: Color) {
-        self.data
-            .put_pixel(position.x as u32, position.y as u32, Rgba(color.into()));
-    }
-
-    /// Transforms the image data by applying a function to each pixel.
-    pub fn transform<F>(&mut self, mut func: F)
-    where
-        F: FnMut(Vec2<i32>, Color) -> Color,
-    {
-        for (x, y, pixel) in self.data.enumerate_pixels_mut() {
-            let output = func(Vec2::new(x as i32, y as i32), pixel.0.into());
-            *pixel = Rgba(output.into());
-        }
-    }
-
-    /// Multiplies the RGB components of each pixel by the alpha component.
-    ///
-    /// This can be useful when working with
-    /// [premultiplied alpha blending](super::BlendAlphaMode::Premultiplied).
-    pub fn premultiply(&mut self) {
-        self.transform(|_, color| color.to_premultiplied())
     }
 }

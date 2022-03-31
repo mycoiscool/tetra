@@ -6,7 +6,7 @@ use std::str::FromStr;
 use hashbrown::HashMap;
 
 use crate::graphics::text::cache::{RasterizedGlyph, Rasterizer};
-use crate::graphics::{ImageData, Rectangle};
+use crate::graphics::{ImageData, Rectangle, TextureFormat};
 use crate::math::Vec2;
 use crate::{fs, Context};
 use crate::{Result, TetraError};
@@ -132,7 +132,32 @@ impl BmFontBuilder {
     where
         P: AsRef<Path>,
     {
-        self.pages.insert(id, ImageData::from_file(path)?);
+        self.pages.insert(id, ImageData::new(path)?);
+
+        Ok(self)
+    }
+
+    /// Sets the image for the specified page of the font, using raw pixel data.
+    ///
+    /// This will override the path specified in the font itself.
+    ///
+    /// # Errors
+    ///
+    /// * [`TetraError::NotEnoughData`] will be returned if not enough data is provided to fill
+    ///   the texture.
+    pub fn with_page_data<D>(
+        mut self,
+        id: u32,
+        width: i32,
+        height: i32,
+        format: TextureFormat,
+        data: D,
+    ) -> Result<BmFontBuilder>
+    where
+        D: Into<Vec<u8>>,
+    {
+        self.pages
+            .insert(id, ImageData::from_data(width, height, format, data)?);
 
         Ok(self)
     }
@@ -149,8 +174,8 @@ impl BmFontBuilder {
     /// # Errors
     ///
     /// * [`TetraError::InvalidTexture`] will be returned if the image data was invalid.
-    pub fn with_page_file_data(mut self, id: u32, data: &[u8]) -> Result<BmFontBuilder> {
-        self.pages.insert(id, ImageData::from_file_data(data)?);
+    pub fn with_page_encoded(mut self, id: u32, data: &[u8]) -> Result<BmFontBuilder> {
+        self.pages.insert(id, ImageData::from_encoded(data)?);
 
         Ok(self)
     }
@@ -162,45 +187,6 @@ impl BmFontBuilder {
         self.pages.insert(id, data);
 
         self
-    }
-
-    /// Sets the image for the specified page of the font, using RGBA8 data.
-    ///
-    /// This will override the path specified in the font itself.
-    ///
-    /// # Errors
-    ///
-    /// * [`TetraError::NotEnoughData`] will be returned if not enough data is provided to fill
-    ///   the texture.
-    pub fn with_page_rgba8<D>(
-        mut self,
-        id: u32,
-        width: i32,
-        height: i32,
-        data: D,
-    ) -> Result<BmFontBuilder>
-    where
-        D: Into<Vec<u8>>,
-    {
-        self.pages
-            .insert(id, ImageData::from_rgba8(width, height, data)?);
-
-        Ok(self)
-    }
-
-    #[allow(missing_docs)]
-    #[deprecated(since = "0.6.4", note = "renamed to with_page_rgba8 for consistency")]
-    pub fn with_page_rgba<D>(
-        self,
-        id: u32,
-        width: i32,
-        height: i32,
-        data: D,
-    ) -> Result<BmFontBuilder>
-    where
-        D: Into<Vec<u8>>,
-    {
-        self.with_page_rgba8(id, width, height, data)
     }
 
     /// Builds the font.
@@ -279,7 +265,7 @@ impl BmFontRasterizer {
                             .ok_or(TetraError::InvalidFont)?
                             .join(file);
 
-                        pages.insert(id, ImageData::from_file(file_path)?);
+                        pages.insert(id, ImageData::new(file_path)?);
                     }
                 }
 
@@ -429,7 +415,7 @@ fn parse_attributes(input: &str) -> Result<BmFontAttributes<'_>> {
             attributes.insert(key, value);
 
             // Skip past the closing '"', and any trailing whitespace.
-            remaining = &next[1..].trim_start();
+            remaining = next[1..].trim_start();
         } else {
             // Find the end of the value by searching for whitespace.
             // If we don't find it, this must be the end of the line.

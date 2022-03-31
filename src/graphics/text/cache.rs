@@ -204,7 +204,7 @@ impl FontCache {
                 if let Some(quad) = self.rasterize_char(device, ch, cursor)? {
                     // Expand the cached bounds of the text geometry:
                     match &mut text_bounds {
-                        Some(existing) => *existing = quad.bounds().combine(&existing),
+                        Some(existing) => *existing = quad.bounds().combine(existing),
                         None => {
                             text_bounds.replace(quad.bounds());
                         }
@@ -322,18 +322,29 @@ fn add_glyph_to_texture(
     packer: &mut ShelfPacker,
     glyph: &RasterizedGlyph,
 ) -> std::result::Result<TextQuad, CacheError> {
-    let (x, y) = packer
+    const PADDING: i32 = 1;
+
+    let region = packer
         .insert(
             device,
             &glyph.data,
             glyph.bounds.width as i32,
             glyph.bounds.height as i32,
+            PADDING,
         )
         .ok_or(CacheError::OutOfSpace)?;
 
     Ok(TextQuad {
-        position: Vec2::new(glyph.bounds.x, glyph.bounds.y),
-        region: Rectangle::new(x as f32, y as f32, glyph.bounds.width, glyph.bounds.height),
+        position: Vec2::new(
+            glyph.bounds.x - PADDING as f32,
+            glyph.bounds.y - PADDING as f32,
+        ),
+        region: Rectangle::new(
+            region.x as f32,
+            region.y as f32,
+            region.width as f32,
+            region.height as f32,
+        ),
     })
 }
 

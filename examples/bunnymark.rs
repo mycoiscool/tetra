@@ -3,7 +3,7 @@
 use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use tetra::graphics::{self, Color, Texture};
-use tetra::input::{self, MouseButton};
+use tetra::input::{self, Key, MouseButton};
 use tetra::math::Vec2;
 use tetra::time;
 use tetra::window;
@@ -12,9 +12,9 @@ use tetra::time::Timestep;
 
 // NOTE: Using a high number here yields worse performance than adding more bunnies over
 // time - I think this is due to all of the RNG being run on the same tick...
-const INITIAL_BUNNIES: usize = 1000;
-const WIDTH: i32 = 1280;
-const HEIGHT: i32 = 720;
+const INITIAL_BUNNIES: usize = 100;
+const MAX_X: f32 = 1280.0 - 26.0;
+const MAX_Y: f32 = 720.0 - 37.0;
 const GRAVITY: f32 = 0.5;
 
 
@@ -39,10 +39,9 @@ struct GameState {
     rng: ThreadRng,
     texture: Texture,
     bunnies: Vec<Bunny>,
-    max_x: f32,
-    max_y: f32,
 
-    click_timer: i32,
+    auto_spawn: bool,
+    spawn_timer: i32,
 }
 
 impl GameState {
@@ -50,8 +49,6 @@ impl GameState {
         let mut rng = rand::thread_rng();
         let texture = Texture::new(ctx, "./examples/resources/wabbit_alpha.png")?;
         let mut bunnies = Vec::with_capacity(INITIAL_BUNNIES);
-        let max_x = (WIDTH - texture.width()) as f32;
-        let max_y = (HEIGHT - texture.height()) as f32;
 
         for _ in 0..INITIAL_BUNNIES {
             bunnies.push(Bunny::new(&mut rng));
@@ -61,42 +58,48 @@ impl GameState {
             rng,
             texture,
             bunnies,
-            max_x,
-            max_y,
 
-            click_timer: 0,
+            auto_spawn: false,
+            spawn_timer: 0,
         })
     }
 }
 
 impl State for GameState {
     fn update(&mut self, ctx: &mut Context) -> tetra::Result {
-        if self.click_timer > 0 {
-            self.click_timer -= 1;
+        if self.spawn_timer > 0 {
+            self.spawn_timer -= 1;
         }
 
-        if input::is_mouse_button_down(ctx, MouseButton::Left) && self.click_timer == 0 {
+        if input::is_key_pressed(ctx, Key::A) {
+            self.auto_spawn = !self.auto_spawn;
+        }
+
+        let should_spawn = self.spawn_timer == 0
+            && (input::is_mouse_button_down(ctx, MouseButton::Left) || self.auto_spawn);
+
+        if should_spawn {
             for _ in 0..INITIAL_BUNNIES {
                 self.bunnies.push(Bunny::new(&mut self.rng));
             }
-            self.click_timer = 10;
+            self.spawn_timer = 10;
         }
 
         for bunny in &mut self.bunnies {
             bunny.position += bunny.velocity;
             bunny.velocity.y += GRAVITY;
 
-            if bunny.position.x > self.max_x {
+            if bunny.position.x > MAX_X {
                 bunny.velocity.x *= -1.0;
-                bunny.position.x = self.max_x;
+                bunny.position.x = MAX_X;
             } else if bunny.position.x < 0.0 {
                 bunny.velocity.x *= -1.0;
                 bunny.position.x = 0.0;
             }
 
-            if bunny.position.y > self.max_y {
+            if bunny.position.y > MAX_Y {
                 bunny.velocity.y *= -0.8;
-                bunny.position.y = self.max_y;
+                bunny.position.y = MAX_Y;
 
                 if self.rng.gen::<bool>() {
                     bunny.velocity.y -= 3.0 + (self.rng.gen::<f32>() * 4.0);
@@ -131,7 +134,7 @@ impl State for GameState {
 }
 
 fn main() -> tetra::Result {
-    ContextBuilder::new("BunnyMark", WIDTH, HEIGHT)
+    ContextBuilder::new("BunnyMark", 1280, 720)
         .quit_on_escape(true)
         .timestep(Timestep::Fixed(60.0))
         .build()?

@@ -5,7 +5,7 @@ use crate::graphics::{DrawParams, FilterMode, Texture};
 use crate::platform::{RawCanvas, RawRenderbuffer};
 use crate::Context;
 
-use super::ImageData;
+use super::{ImageData, TextureFormat};
 
 /// A builder for creating advanced canvas configurations.
 ///
@@ -16,13 +16,13 @@ use super::ImageData;
 pub struct CanvasBuilder {
     width: i32,
     height: i32,
+    texture_format: TextureFormat,
     samples: u8,
     stencil_buffer: bool,
 }
 
 impl CanvasBuilder {
-    /// Creates a new canvas builder, which can be used to create a canvas with multisampling and/or
-    /// additional buffers.
+    /// Creates a new canvas builder.
     ///
     /// You can also use [`Canvas::builder`] as a shortcut for this, if you want
     /// to avoid the extra import.
@@ -30,9 +30,18 @@ impl CanvasBuilder {
         CanvasBuilder {
             width,
             height,
+            texture_format: TextureFormat::Rgba8,
             samples: 0,
             stencil_buffer: false,
         }
+    }
+
+    /// Sets the format that should be used for the canvas' underlying [`Texture`].
+    ///
+    /// Defaults to [`TextureFormat::Rgba8`].
+    pub fn texture_format(&mut self, format: TextureFormat) -> &mut CanvasBuilder {
+        self.texture_format = format;
+        self
     }
 
     /// Sets the level of multisample anti-aliasing to use.
@@ -70,6 +79,7 @@ impl CanvasBuilder {
         let attachments = ctx.device.new_canvas(
             self.width,
             self.height,
+            self.texture_format,
             ctx.graphics.default_filter_mode,
             self.samples,
             self.stencil_buffer,
@@ -95,13 +105,16 @@ impl CanvasBuilder {
 ///
 /// # Performance
 ///
-/// Creating a `Canvas` is a relatively expensive operation. If you can, store them in your
-/// [`State`](crate::State) struct rather than recreating them each frame.
+/// Creating a canvas is quite an expensive operation. Try to reuse them, rather
+/// than recreating them every frame.
 ///
-/// Cloning a `Canvas` is a very cheap operation, as the underlying data is shared between the
-/// original instance and the clone via [reference-counting](https://doc.rust-lang.org/std/rc/struct.Rc.html).
-/// This does mean, however, that updating a `Canvas` (for example, changing its filter mode) will also
-/// update any other clones of that `Canvas`.
+/// Switching which canvas you are rendering to can be also be slow, as it requires flushing
+/// any pending draw calls to the GPU. It's usually a good idea to do your rendering
+/// to a canvas all in one go, if you can.
+///
+/// You can clone a canvas cheaply, as it is a [reference-counted](https://doc.rust-lang.org/std/rc/struct.Rc.html)
+/// handle to a GPU resource. However, this does mean that modifying a canvas (e.g.
+/// drawing to it) will also affect any clones that exist of it.
 ///
 /// # Examples
 ///
@@ -117,7 +130,11 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    /// Creates a new canvas, with the default settings (no multisampling, no additional buffers).
+    /// Creates a new canvas, with the default settings:
+    ///
+    /// * No multisampling
+    /// * No additional buffers
+    /// * [`TextureFormat::Rgba8`] is used for the underlying texture
     ///
     /// # Errors
     ///
@@ -127,33 +144,10 @@ impl Canvas {
         CanvasBuilder::new(width, height).build(ctx)
     }
 
-    /// Creates a new canvas builder, which can be used to create a canvas with multisampling and/or
-    /// additional buffers.
+    /// Creates a new canvas builder, which can be used to create a canvas with more advanced
+    /// configurations, such as multisampling or stencil buffers.
     pub fn builder(width: i32, height: i32) -> CanvasBuilder {
         CanvasBuilder::new(width, height)
-    }
-
-    /// Creates a new canvas, with the specified level of multisample anti-aliasing.
-    ///
-    /// The number of samples that can be used varies between graphics cards - `2`, `4` and `8` are reasonably
-    /// well supported. When set to `0` (the default), no multisampling will be used.
-    ///
-    /// # Resolving
-    ///
-    /// In order to actually display a multisampled canvas, it first has to be downsampled (or 'resolved'). This is
-    /// done automatically once you switch to a different canvas/the backbuffer. Until this step takes place,
-    /// your rendering will *not* be reflected in the canvas' underlying [`texture`](Self::texture) (and by
-    /// extension, in the output of [`draw`](Self::draw) and [`get_data`](Self::get_data)).
-    ///
-    /// # Errors
-    ///
-    /// * [`TetraError::PlatformError`](crate::TetraError::PlatformError) will be returned if the underlying
-    /// graphics API encounters an error.
-    #[deprecated(since = "0.6.4", note = "use Canvas::builder instead")]
-    pub fn multisampled(ctx: &mut Context, width: i32, height: i32, samples: u8) -> Result<Canvas> {
-        CanvasBuilder::new(width, height)
-            .samples(samples)
-            .build(ctx)
     }
 
     /// Draws the canvas to the screen (or to another canvas, if one is enabled).
@@ -204,7 +198,10 @@ impl Canvas {
         self.texture.get_data(ctx)
     }
 
-    /// Writes RGBA pixel data to a specified region of the canvas.
+    /// Writes pixel data to a specified region of the canvas.
+    ///
+    /// The data will be interpreted based on the [`TextureFormat`] of the canvas'
+    /// underlying texture.
     ///
     /// This method requires you to provide enough data to fill the target rectangle.
     /// If you provide too little data, an error will be returned.
@@ -234,7 +231,10 @@ impl Canvas {
         self.texture.set_data(ctx, x, y, width, height, data)
     }
 
-    /// Overwrites the entire canvas with new RGBA pixel data.
+    /// Overwrites the entire canvas with new pixel data.
+    ///
+    /// The data will be interpreted based on the [`TextureFormat`] of the canvas'
+    /// underlying texture.
     ///
     /// This method requires you to provide enough data to fill the canvas.
     /// If you provide too little data, an error will be returned.

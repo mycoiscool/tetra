@@ -11,7 +11,8 @@ use crate::graphics::{
     StencilState, StencilTest,
 };
 use crate::graphics::{
-    BlendAlphaMode, BlendMode, Color, FilterMode, GraphicsDeviceInfo, StencilAction,
+    BlendFactor, BlendOperation, BlendState, Color, FilterMode, GraphicsDeviceInfo, StencilAction,
+    TextureFormat,
 };
 use crate::math::{Mat2, Mat3, Mat4, Vec2, Vec3, Vec4};
 
@@ -125,7 +126,7 @@ impl GraphicsDevice {
 
     pub fn front_face(&mut self, front_face: VertexWinding) {
         unsafe {
-            self.state.gl.front_face(front_face.into());
+            self.state.gl.front_face(front_face.to_gl_enum());
         }
     }
 
@@ -163,10 +164,10 @@ impl GraphicsDevice {
 
             self.state
                 .gl
-                .stencil_op(glow::KEEP, glow::KEEP, state.action.as_gl_enum());
+                .stencil_op(glow::KEEP, glow::KEEP, state.action.to_gl_enum());
 
             self.state.gl.stencil_func(
-                state.test.as_gl_enum(),
+                state.test.to_gl_enum(),
                 state.reference_value.into(),
                 state.read_mask.into(),
             );
@@ -210,9 +211,11 @@ impl GraphicsDevice {
 
             self.clear_errors();
 
-            self.state
-                .gl
-                .buffer_data_size(glow::ARRAY_BUFFER, buffer.size() as i32, usage.into());
+            self.state.gl.buffer_data_size(
+                glow::ARRAY_BUFFER,
+                buffer.size() as i32,
+                usage.to_gl_enum(),
+            );
 
             if let Some(e) = self.get_error() {
                 return Err(TetraError::PlatformError(format_gl_error(
@@ -309,7 +312,7 @@ impl GraphicsDevice {
             self.state.gl.buffer_data_size(
                 glow::ELEMENT_ARRAY_BUFFER,
                 buffer.size() as i32,
-                usage.into(),
+                usage.to_gl_enum(),
             );
 
             if let Some(e) = self.get_error() {
@@ -588,14 +591,18 @@ impl GraphicsDevice {
         }
     }
 
-    pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+    pub fn set_blend_state(&mut self, blend_state: BlendState) {
         unsafe {
-            self.state.gl.blend_equation(blend_mode.equation());
+            self.state.gl.blend_equation_separate(
+                blend_state.color_operation.to_gl_enum(),
+                blend_state.alpha_operation.to_gl_enum(),
+            );
+
             self.state.gl.blend_func_separate(
-                blend_mode.src_rgb(),
-                blend_mode.dst_rgb(),
-                blend_mode.src_alpha(),
-                blend_mode.dst_alpha(),
+                blend_state.color_src.to_gl_enum(),
+                blend_state.color_dst.to_gl_enum(),
+                blend_state.alpha_src.to_gl_enum(),
+                blend_state.alpha_dst.to_gl_enum(),
             );
         }
     }
@@ -604,6 +611,7 @@ impl GraphicsDevice {
         &mut self,
         width: i32,
         height: i32,
+        format: TextureFormat,
         filter_mode: FilterMode,
     ) -> Result<RawTexture> {
         // TODO: I don't think we need mipmaps?
@@ -620,6 +628,7 @@ impl GraphicsDevice {
                 id,
                 width,
                 height,
+                format,
             };
 
             self.bind_default_texture(Some(texture.id));
@@ -627,13 +636,13 @@ impl GraphicsDevice {
             self.state.gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
                 glow::TEXTURE_MIN_FILTER,
-                filter_mode.into(),
+                filter_mode.to_gl_enum() as i32,
             );
 
             self.state.gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
                 glow::TEXTURE_MAG_FILTER,
-                filter_mode.into(),
+                filter_mode.to_gl_enum() as i32,
             );
 
             self.state.gl.tex_parameter_i32(
@@ -661,12 +670,12 @@ impl GraphicsDevice {
             self.state.gl.tex_image_2d(
                 glow::TEXTURE_2D,
                 0,
-                glow::RGBA as i32, // love 2 deal with legacy apis
+                format.to_gl_internal_format() as i32,
                 width,
                 height,
                 0,
-                glow::RGBA,
-                glow::UNSIGNED_BYTE,
+                format.to_gl_format(),
+                format.to_gl_data_type(),
                 None,
             );
 
@@ -695,7 +704,7 @@ impl GraphicsDevice {
             "tried to write outside of texture bounds"
         );
 
-        let expected = (width * height * 4) as usize;
+        let expected = width as usize * height as usize * texture.format.stride();
         let actual = data.len();
 
         if expected > actual {
@@ -704,7 +713,15 @@ impl GraphicsDevice {
 
         self.bind_default_texture(Some(texture.id));
 
+        let alignment = texture.format.to_gl_alignment();
+
         unsafe {
+            if alignment != 4 {
+                self.state
+                    .gl
+                    .pixel_store_i32(glow::UNPACK_ALIGNMENT, alignment)
+            }
+
             self.state.gl.tex_sub_image_2d(
                 glow::TEXTURE_2D,
                 0,
@@ -712,10 +729,15 @@ impl GraphicsDevice {
                 y,
                 width,
                 height,
-                glow::RGBA,
-                glow::UNSIGNED_BYTE,
+                texture.format.to_gl_format(),
+                texture.format.to_gl_data_type(),
                 PixelUnpackData::Slice(data),
-            )
+            );
+
+            // Revert back to a sensible default.
+            if alignment != 4 {
+                self.state.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4)
+            }
         }
 
         Ok(())
@@ -724,14 +746,15 @@ impl GraphicsDevice {
     pub fn get_texture_data(&mut self, texture: &RawTexture) -> Vec<u8> {
         self.bind_default_texture(Some(texture.id));
 
-        let mut buffer = vec![0; (texture.width * texture.height * 4) as usize];
+        let mut buffer =
+            vec![0; (texture.width * texture.height) as usize * texture.format.stride()];
 
         unsafe {
             self.state.gl.get_tex_image(
                 glow::TEXTURE_2D,
                 0,
-                glow::RGBA,
-                glow::UNSIGNED_BYTE,
+                texture.format.to_gl_format(),
+                texture.format.to_gl_data_type(),
                 PixelPackData::Slice(&mut buffer),
             );
         }
@@ -746,13 +769,13 @@ impl GraphicsDevice {
             self.state.gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
                 glow::TEXTURE_MIN_FILTER,
-                filter_mode.into(),
+                filter_mode.to_gl_enum() as i32,
             );
 
             self.state.gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
                 glow::TEXTURE_MAG_FILTER,
-                filter_mode.into(),
+                filter_mode.to_gl_enum() as i32,
             );
         }
     }
@@ -765,6 +788,7 @@ impl GraphicsDevice {
         &mut self,
         width: i32,
         height: i32,
+        format: TextureFormat,
         filter_mode: FilterMode,
         samples: u8,
         with_stencil_buffer: bool,
@@ -786,7 +810,7 @@ impl GraphicsDevice {
 
             self.bind_framebuffer(Some(canvas.id));
 
-            let color = self.new_texture(width, height, filter_mode)?;
+            let color = self.new_texture(width, height, format, filter_mode)?;
 
             self.state.gl.framebuffer_texture_2d(
                 glow::FRAMEBUFFER,
@@ -801,7 +825,8 @@ impl GraphicsDevice {
             let actual_samples = u8::min(samples, self.state.max_samples);
 
             let multisample_color = if actual_samples > 0 {
-                let renderbuffer = self.new_color_renderbuffer(width, height, actual_samples)?;
+                let renderbuffer =
+                    self.new_color_renderbuffer(width, height, format, actual_samples)?;
 
                 self.state.gl.framebuffer_renderbuffer(
                     glow::FRAMEBUFFER,
@@ -901,9 +926,10 @@ impl GraphicsDevice {
         &mut self,
         width: i32,
         height: i32,
+        format: TextureFormat,
         samples: u8,
     ) -> Result<RawRenderbuffer> {
-        self.new_renderbuffer(width, height, glow::RGBA, samples)
+        self.new_renderbuffer(width, height, format.to_gl_internal_format(), samples)
     }
 
     pub fn new_depth_stencil_renderbuffer(
@@ -1173,9 +1199,9 @@ impl Drop for GraphicsDevice {
 }
 
 #[doc(hidden)]
-impl From<BufferUsage> for u32 {
-    fn from(buffer_usage: BufferUsage) -> u32 {
-        match buffer_usage {
+impl BufferUsage {
+    fn to_gl_enum(self) -> u32 {
+        match self {
             BufferUsage::Static => glow::STATIC_DRAW,
             BufferUsage::Dynamic => glow::DYNAMIC_DRAW,
             BufferUsage::Stream => glow::STREAM_DRAW,
@@ -1184,9 +1210,9 @@ impl From<BufferUsage> for u32 {
 }
 
 #[doc(hidden)]
-impl From<VertexWinding> for u32 {
-    fn from(front_face: VertexWinding) -> u32 {
-        match front_face {
+impl VertexWinding {
+    fn to_gl_enum(self) -> u32 {
+        match self {
             VertexWinding::Clockwise => glow::CW,
             VertexWinding::CounterClockwise => glow::CCW,
         }
@@ -1194,75 +1220,57 @@ impl From<VertexWinding> for u32 {
 }
 
 #[doc(hidden)]
-impl From<FilterMode> for i32 {
-    fn from(filter_mode: FilterMode) -> i32 {
-        match filter_mode {
-            FilterMode::Nearest => glow::NEAREST as i32,
-            FilterMode::Linear => glow::LINEAR as i32,
+impl FilterMode {
+    fn to_gl_enum(self) -> u32 {
+        match self {
+            FilterMode::Nearest => glow::NEAREST,
+            FilterMode::Linear => glow::LINEAR,
         }
     }
 }
 
 #[doc(hidden)]
-impl BlendMode {
-    pub(crate) fn equation(&self) -> u32 {
+impl TextureFormat {
+    fn to_gl_format(self) -> u32 {
         match self {
-            BlendMode::Alpha(_) => glow::FUNC_ADD,
-            BlendMode::Add(_) => glow::FUNC_ADD,
-            BlendMode::Subtract(_) => glow::FUNC_REVERSE_SUBTRACT,
-            BlendMode::Multiply => glow::FUNC_ADD,
+            TextureFormat::Rgba8 => glow::RGBA,
+            TextureFormat::R8 => glow::RED,
+            TextureFormat::Rg8 => glow::RG,
+            TextureFormat::Rgba16F => glow::RGBA,
         }
     }
 
-    pub(crate) fn src_rgb(&self) -> u32 {
+    fn to_gl_internal_format(self) -> u32 {
         match self {
-            BlendMode::Alpha(blend_alpha) => match blend_alpha {
-                BlendAlphaMode::Multiply => glow::SRC_ALPHA,
-                BlendAlphaMode::Premultiplied => glow::ONE,
-            },
-            BlendMode::Add(blend_alpha) => match blend_alpha {
-                BlendAlphaMode::Multiply => glow::SRC_ALPHA,
-                BlendAlphaMode::Premultiplied => glow::ONE,
-            },
-            BlendMode::Subtract(blend_alpha) => match blend_alpha {
-                BlendAlphaMode::Multiply => glow::SRC_ALPHA,
-                BlendAlphaMode::Premultiplied => glow::ONE,
-            },
-            BlendMode::Multiply => glow::DST_COLOR,
+            TextureFormat::Rgba8 => glow::RGBA8,
+            TextureFormat::R8 => glow::R8,
+            TextureFormat::Rg8 => glow::RG8,
+            TextureFormat::Rgba16F => glow::RGBA16F,
         }
     }
 
-    pub(crate) fn src_alpha(&self) -> u32 {
+    fn to_gl_data_type(self) -> u32 {
         match self {
-            BlendMode::Alpha(_) => glow::ONE,
-            BlendMode::Add(_) => glow::ZERO,
-            BlendMode::Subtract(_) => glow::ZERO,
-            BlendMode::Multiply => glow::DST_COLOR,
+            TextureFormat::Rgba8 => glow::UNSIGNED_BYTE,
+            TextureFormat::R8 => glow::UNSIGNED_BYTE,
+            TextureFormat::Rg8 => glow::UNSIGNED_BYTE,
+            TextureFormat::Rgba16F => glow::HALF_FLOAT,
         }
     }
 
-    pub(crate) fn dst_rgb(&self) -> u32 {
+    fn to_gl_alignment(self) -> i32 {
         match self {
-            BlendMode::Alpha(_) => glow::ONE_MINUS_SRC_ALPHA,
-            BlendMode::Add(_) => glow::ONE,
-            BlendMode::Subtract(_) => glow::ONE,
-            BlendMode::Multiply => glow::ZERO,
-        }
-    }
-
-    pub(crate) fn dst_alpha(&self) -> u32 {
-        match self {
-            BlendMode::Alpha(_) => glow::ONE_MINUS_SRC_ALPHA,
-            BlendMode::Add(_) => glow::ONE,
-            BlendMode::Subtract(_) => glow::ONE,
-            BlendMode::Multiply => glow::ZERO,
+            TextureFormat::Rgba8 => 4,
+            TextureFormat::R8 => 1,
+            TextureFormat::Rg8 => 2,
+            TextureFormat::Rgba16F => 8,
         }
     }
 }
 
 #[doc(hidden)]
 impl StencilTest {
-    pub(crate) fn as_gl_enum(self) -> u32 {
+    fn to_gl_enum(self) -> u32 {
         match self {
             StencilTest::Never => glow::NEVER,
             StencilTest::LessThan => glow::LESS,
@@ -1277,8 +1285,42 @@ impl StencilTest {
 }
 
 #[doc(hidden)]
+impl BlendOperation {
+    fn to_gl_enum(self) -> u32 {
+        match self {
+            BlendOperation::Add => glow::FUNC_ADD,
+            BlendOperation::Subtract => glow::FUNC_SUBTRACT,
+            BlendOperation::ReverseSubtract => glow::FUNC_REVERSE_SUBTRACT,
+            BlendOperation::Min => glow::MIN,
+            BlendOperation::Max => glow::MAX,
+        }
+    }
+}
+
+#[doc(hidden)]
+impl BlendFactor {
+    fn to_gl_enum(self) -> u32 {
+        match self {
+            BlendFactor::Zero => glow::ZERO,
+            BlendFactor::One => glow::ONE,
+            BlendFactor::Src => glow::SRC_COLOR,
+            BlendFactor::OneMinusSrc => glow::ONE_MINUS_SRC_COLOR,
+            BlendFactor::SrcAlpha => glow::SRC_ALPHA,
+            BlendFactor::OneMinusSrcAlpha => glow::ONE_MINUS_SRC_ALPHA,
+            BlendFactor::Dst => glow::DST_COLOR,
+            BlendFactor::OneMinusDst => glow::ONE_MINUS_DST_COLOR,
+            BlendFactor::DstAlpha => glow::DST_ALPHA,
+            BlendFactor::OneMinusDstAlpha => glow::ONE_MINUS_DST_ALPHA,
+            BlendFactor::SrcAlphaSaturated => glow::SRC_ALPHA_SATURATE,
+            BlendFactor::Constant => glow::CONSTANT_COLOR,
+            BlendFactor::OneMinusConstant => glow::ONE_MINUS_CONSTANT_COLOR,
+        }
+    }
+}
+
+#[doc(hidden)]
 impl StencilAction {
-    pub(crate) fn as_gl_enum(self) -> u32 {
+    fn to_gl_enum(self) -> u32 {
         match self {
             StencilAction::Keep => glow::KEEP,
             StencilAction::Zero => glow::ZERO,
@@ -1409,6 +1451,7 @@ pub struct RawTexture {
 
     width: i32,
     height: i32,
+    format: TextureFormat,
 }
 
 impl RawTexture {
@@ -1418,6 +1461,10 @@ impl RawTexture {
 
     pub fn height(&self) -> i32 {
         self.height
+    }
+
+    pub fn format(&self) -> TextureFormat {
+        self.format
     }
 }
 

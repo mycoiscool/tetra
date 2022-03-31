@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use rodio::source::{Buffered, Empty};
-use rodio::{Decoder, Device as RodioDevice, Sample, Source};
+use rodio::source::Buffered;
+use rodio::{Decoder, OutputStream, OutputStreamHandle, PlayError, Sample, Source};
 
 use crate::error::{Result, TetraError};
 use crate::fs;
@@ -20,9 +20,11 @@ use crate::Context;
 /// to 'fire and forget' a sound, you can discard it - the sound will
 /// continue playing regardless.
 ///
-/// # Supported Formats
+/// # Supported File Formats
 ///
-/// Various file formats are supported, and can be enabled or disabled via Cargo features:
+/// Audio can be decoded from various common file formats via the [`new`](Sound::new)
+/// and [`from_encoded`](Sound::from_encoded) constructors. Individual
+/// decoders can be enabled or disabled via Cargo feature flags.
 ///
 /// | Format | Cargo feature | Enabled by default? |
 /// |-|-|-|
@@ -33,10 +35,12 @@ use crate::Context;
 ///
 /// # Performance
 ///
-/// Creating a `Sound` is a fairly cheap operation, as the data is not decoded until playback begins.
+/// When you create an instance of `Sound`, the audio data is loaded into memory. It is not
+/// decoded until playback begins.
 ///
-/// Cloning a `Sound` is a very cheap operation, as the underlying data is shared between the
-/// original instance and the clone via [reference-counting](https://doc.rust-lang.org/std/rc/struct.Rc.html).
+/// You can clone a sound cheaply, as it is [reference-counted](https://doc.rust-lang.org/std/rc/struct.Rc.html)
+/// internally. The underlying data will be shared by all of the clones (and, by extension,
+/// all of the `SoundInstance`s created from them).
 ///
 /// # Examples
 ///
@@ -73,7 +77,7 @@ impl Sound {
     ///
     /// Note that the data is not decoded until playback begins, so this function will not
     /// validate that the data being read is formatted correctly.
-    pub fn from_file_data(data: &[u8]) -> Sound {
+    pub fn from_encoded(data: &[u8]) -> Sound {
         Sound { data: data.into() }
     }
 
@@ -317,21 +321,27 @@ impl AudioControls {
     }
 }
 
+struct AudioStream {
+    _stream: OutputStream,
+    handle: OutputStreamHandle,
+}
+
 pub(crate) struct AudioDevice {
-    device: Option<RodioDevice>,
+    stream: Option<AudioStream>,
     master_volume: Arc<AtomicU32>,
 }
 
 impl AudioDevice {
     pub(crate) fn new() -> AudioDevice {
-        let device = rodio::default_output_device();
+        let stream_and_handle = OutputStream::try_default();
 
-        if let Some(active_device) = &device {
-            rodio::play_raw(&active_device, Empty::new());
-        }
+        let stream = match stream_and_handle {
+            Ok((_stream, handle)) => Some(AudioStream { _stream, handle }),
+            Err(_) => None,
+        };
 
         AudioDevice {
-            device,
+            stream,
             master_volume: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         }
     }
@@ -383,10 +393,15 @@ impl AudioDevice {
             speed,
         };
 
-        rodio::play_raw(
-            self.device.as_ref().ok_or(TetraError::NoAudioDevice)?,
-            source.convert_samples(),
-        );
+        let stream = self.stream.as_ref().ok_or(TetraError::NoAudioDevice)?;
+
+        stream
+            .handle
+            .play_raw(source.convert_samples())
+            .map_err(|e| match e {
+                PlayError::DecoderError(e) => TetraError::InvalidSound(e),
+                PlayError::NoDevice => TetraError::NoAudioDevice,
+            })?;
 
         Ok(controls)
     }

@@ -12,6 +12,16 @@ Tetra is a simple 2D game framework written in Rust. It uses SDL2 for event hand
 * [API Docs](https://docs.rs/tetra)
 * [FAQ](https://tetra.seventeencups.net/FAQ)
 
+## Status
+
+Tetra is not currently under active development (as of January 2022).
+
+I will still be fixing minor bugs/updating dependencies where needed, but I don't plan on implementing any new features going forward.
+
+PRs are welcome, but please open an issue/discussion if you're thinking of making a large change, so I can tell you if it's likely to be accepted or not!
+
+For more information, see [this blog post](https://www.seventeencups.net/posts/three-years-of-tetra/).
+
 ## Features
 
 * XNA/MonoGame-inspired API
@@ -28,7 +38,7 @@ Tetra is a simple 2D game framework written in Rust. It uses SDL2 for event hand
 To add Tetra to your project, add the following line to your `Cargo.toml` file:
 
 ```toml
-tetra = "0.6"
+tetra = "0.7"
 ```
 
 You will also need to install the SDL2 native libraries - full details are provided in the [documentation](https://tetra.seventeencups.net/installation).
