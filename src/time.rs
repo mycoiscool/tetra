@@ -66,32 +66,10 @@ pub(crate) fn duration_to_frame(d: DurationAdv) -> f64 {
     d.as_seconds_f64() *1000.0
 }
 
-pub(crate) struct FpsTracker {
-    buffer: VecDeque<f64>,
-}
 
-impl FpsTracker {
-    fn new() -> FpsTracker {
-        FpsTracker {
-            buffer: VecDeque::with_capacity(200),
-        }
-    }
-
-    pub(crate) fn push(&mut self, frame_time: Duration) {
-        if self.buffer.len() == 200 {
-            self.buffer.pop_front();
-        }
-
-        self.buffer.push_back(frame_time.as_secs_f64());
-    }
-
-    fn get_fps(&self) -> f64 {
-        1.0 / (self.buffer.iter().sum::<f64>() / self.buffer.len() as f64)
-    }
-}
 
 pub(crate) struct TimeContext {
-    pub(crate) fps_tracker: FpsTracker,
+    pub(crate) fps_tracker: VecDeque<f64>,
     pub(crate) ticks_per_second: Option<f64>,
     #[cfg(feature = "developer")]
     pub(crate) frame_time: VecDeque<FrameTime>, 
@@ -241,7 +219,7 @@ pub fn set_timestep(ctx: &mut Context, timestep: Timestep) {
 
 /// Returns the current frame rate, averaged out over the last 200 frames.
 pub fn get_fps(ctx: &Context) -> f64 {
-    ctx.time.fps_tracker.get_fps()
+    1.0 / (ctx.time.fps_tracker.iter().sum::<f64>() / ctx.time.fps_tracker.len() as f64)
 }
 
 

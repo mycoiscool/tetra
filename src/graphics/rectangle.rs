@@ -111,6 +111,11 @@ where
         self.x < other.x + other.width
         && self.x + self.width > other.x
     }
+    
+    ///For construction bounds
+    pub fn to_x_bounds(&self) -> Vec2<T> {
+        Vec2::new(self.x, self.width)
+    }
 
     /// Returns `true` if the `other` rectangle is fully contained within `self`.
     pub fn contains(&self, other: &Rectangle<T>) -> bool
@@ -132,6 +137,23 @@ where
             && point.x < self.x + self.width
             && self.y <= point.y
             && point.y < self.y + self.height
+    }
+
+
+    /// Returns 'true' if the x is within the bounds of the rectangle.
+    pub fn contains_x(&self, x: T) -> bool
+    where
+        T: Add<Output = T> + PartialOrd,
+    {
+        self.x <= x && x < self.x + self.width
+    }
+
+    /// Creates a Vec2 from the rectangle based on the x-position and the width of the rectangle. 
+    pub fn to_vec2_x(&self) -> Vec2<T> 
+    where 
+        T: Add<Output = T>
+            {
+        Vec2::new(self.x, self.x + self.width)
     }
 
     /// Returns a rectangle that contains both `self` and `other`.
@@ -206,7 +228,7 @@ where
     }
 
     /// Returns the co-ordinates of the top-left point of the rectangle.
-    pub fn top_left(&self) -> Vec2<T> {
+    pub const fn top_left(&self) -> Vec2<T> {
         Vec2::new(self.x, self.y)
     }
 
