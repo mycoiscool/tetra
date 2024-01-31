@@ -297,6 +297,11 @@ pub fn set_relative_mouse_mode(ctx: &mut Context, relative_mouse_mode: bool) {
     ctx.window.set_relative_mouse_mode(relative_mouse_mode);
 }
 
+/// Warps the mouse
+pub fn warp_mouse(ctx: &mut Context, x: i32, y: i32) {
+    ctx.window.warp_mouse(x, y);
+}
+
 /// Returns whether or not relative mouse mode is currently enabled.
 ///
 /// While the mouse is in relative mode, the cursor is hidden and can move beyond the

@@ -171,13 +171,21 @@ impl Context {
         E: From<TetraError>,
     {
         let mut last_time = Instant::now();
-        let mut curr_time = Instant::now();
+        
+        
+        let mut curr_time: Instant; 
+        #[cfg(feature = "developer")]
+        {curr_time = Instant::now();}
+        
 
         //let spin = spin_sleep::SpinSleeper::new(1_000_000);
 
         let mut  averager = VecDeque::new();//
         averager.resize(Self::AVERAGER_LEN, Self::FRAME_RATES[0]); 
 
+
+
+        #[cfg(feature = "spin")]
         let spin = spin_sleep::SpinSleeper::new(1_000_000);
         
 
@@ -195,7 +203,8 @@ impl Context {
             averager.pop_front(); 
             averager.push_back(diff_time); 
 
-
+                #[cfg(feature = "drawcall_log")]
+                println!("New Frame"); 
             //diff_time = averager.iter().fold(Duration::seconds(0), |acc, x| acc + *x) / Self::AVERAGER_LEN as f64; 
 
             self.time.fps_tracker.pop_front();
@@ -225,11 +234,13 @@ impl Context {
                         input::clear(self);
 
                         self.time.accumulator -=  Self::UPS_DURATION; 
-
+                        // self.time.accumulator = Self::UPS_DURATION *0.0; 
                         if self.time.accumulator < (Self::FUZZ_SUB_DURATION - Self::UPS_DURATION) {
                             self.time.accumulator = Duration::nanoseconds(0); 
                         }
 
+
+                        
 
                             #[cfg(feature = "developer")]
                             { frame_time.array[1] += duration_to_frame(curr_time.elapsed()); }
@@ -270,9 +281,14 @@ impl Context {
             let sleep_timer = ( Duration::seconds_f64(1.0 / self.time.frame_rate_cap) - curr_time.elapsed()).as_seconds_f64(); 
 
             
+            
             //println!("Sleep_timer: {}", sleep_timer); 
             if sleep_timer > 0.0 {
+                #[cfg(feature = "spin")]
                 spin.sleep_s(sleep_timer);
+
+                #[cfg(not(feature = "spin"))]
+                std::thread::sleep(std::time::Duration::from_secs_f64(sleep_timer));
         
             };
 

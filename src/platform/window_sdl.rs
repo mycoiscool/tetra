@@ -396,6 +396,10 @@ impl Window {
         self.sdl.mouse().relative_mouse_mode()
     }
 
+    pub fn warp_mouse(&mut self, x: i32, y: i32) {
+        self.sdl
+            .mouse().warp_mouse_in_window(&self.sdl_window, x, y);
+    }
     pub fn get_clipboard_text(&self) -> Result<String> {
         self.video_sys
             .clipboard()
@@ -491,7 +495,10 @@ where
 {
     while let Some(event) = ctx.window.event_pump.poll_event() {
         match event {
-            SdlEvent::Quit { .. } => ctx.running = false, // TODO: Add a way to override this
+            SdlEvent::Quit { .. } => {
+                ctx.running = false; 
+                state.event(ctx, Event::Quit)?; 
+            }// TODO: Add a way to override this
 
             SdlEvent::Window { win_event, .. } => match win_event {
                 WindowEvent::SizeChanged(width, height) => {
@@ -745,6 +752,7 @@ where
                 }
             }
 
+           
             _ => {}
         }
     }

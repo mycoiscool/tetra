@@ -24,7 +24,7 @@ ab_glyph = { version = "0.2.2", optional = true }
 xi-unicode = "0.3.0"
 bytemuck = "1.5.0"
 num-traits = "0.2.14"
-lyon_tessellation = "0.17.4"
+lyon_tessellation = "0.17.10"
 spin_sleep = "1.0.0"
 time = "0.3.3"
 half = { version = "1.8", features = ["bytemuck"] }
@@ -49,6 +49,8 @@ default = [
 
 
 developer = []
+spin = []
+drawcall_log = []
 
 # Enables the `tetra::audio` API. This feature can be disabled if you want to use a different
 # audio API in your game (e.g. FMod or WWise).

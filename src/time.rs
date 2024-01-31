@@ -61,7 +61,9 @@ impl FrameTime {
     pub const LEN: usize = 120; 
 }
 
+
 ///for convenience
+#[cfg(feature = "developer")]
 pub(crate) fn duration_to_frame(d: DurationAdv) -> f64 {
     d.as_seconds_f64() *1000.0
 }

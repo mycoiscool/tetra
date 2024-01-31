@@ -53,6 +53,8 @@ pub trait State<E = TetraError> {
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum Event {
+    /// Quit has been called
+    Quit, 
     /// The game window was resized.
     Resized {
         /// The new width of the game window.

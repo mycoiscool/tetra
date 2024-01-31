@@ -311,6 +311,10 @@ fn resolve_canvas(ctx: &mut Context) {
 /// graphics device.
 pub fn flush(ctx: &mut Context) {
     if !ctx.graphics.vertex_data.is_empty() {
+
+        #[cfg(feature = "drawcall_log")]
+        println!("Flushed"); 
+
         let texture = match &ctx.graphics.texture {
             None => return,
             Some(t) => t,
