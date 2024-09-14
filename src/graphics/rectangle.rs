@@ -248,12 +248,52 @@ where
         Vec2::new(self.x, self.bottom())
     }
 
+         /// Translate rect origin be `offset` vector
+    pub fn offset(self, offset: Vec2<T>) -> Rectangle<T> where 
+    T: Add<Output = T>{
+        
+        Self::new(self.x + offset.x, self.y + offset.y, self.width, self.height)
+    }
+
     /// Returns the co-ordinates of the bottom-right point of the rectangle.
     pub fn bottom_right(&self) -> Vec2<T>
     where
         T: Add<Output = T>,
     {
         Vec2::new(self.right(), self.bottom())
+    }
+
+    pub fn intersect_2(&self, other: Rectangle<T>) -> Option<Rectangle<T>>
+    where T: PartialOrd + Add<Output = T>  + Sub<Output = T> + Copy{
+        let left = if self.x > other.x { self.x } else { other.x };
+        let top = if self.y > other.y { self.y } else { other.y };
+        let right = if self.right() < other.right() {
+            self.right()
+        } else {
+            other.right()
+        };
+        let bottom = if self.bottom() < other.bottom() {
+            self.bottom()
+        } else {
+            other.bottom()
+        };
+        if right < left || bottom < top {
+            return None;
+        }
+
+        Some(Self {
+            x: left,
+            y: top,
+            width: right - left,
+            height: bottom - top,
+        })
+    }
+
+    pub fn size(&self) -> Vec2<T>
+    where 
+        T: Add<Output = T>
+    {
+        Vec2::new(self.width, self.height)
     }
 }
 

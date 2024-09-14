@@ -135,10 +135,56 @@ impl State for GameState {
     }
 }
 
+
+
 fn main() -> tetra::Result {
+
+
     ContextBuilder::new("BunnyMark", 1280, 720)
         .quit_on_escape(true)
      
         .build()?
         .run(GameState::new)
+}
+
+
+/* #[no_mangle]
+pub extern "C" fn android_main(app: ndk_glue::native_app_glue::NativeActivity) {
+    unsafe { ndk_glue::init(android_main) }
+    let event_loop = EventLoop::new(app);
+
+    // Set up the Tetra game context
+    ContextBuilder::new("Tetra Android", 800, 600)
+        .build()
+        .unwrap()
+        .run(GameState::new);
+} */
+
+use android_activity::{AndroidApp, InputStatus, MainEvent, PollEvent};
+
+#[no_mangle]
+fn android_main(app: AndroidApp) {
+    android_logger::init_once(android_logger::Config::default().with_min_level(log::Level::Info));
+
+    loop {
+        app.poll_events(Some(std::time::Duration::from_millis(500)) /* timeout */, |event| {
+            match event {
+                PollEvent::Wake => { log::info!("Early wake up"); },
+                PollEvent::Timeout => { log::info!("Hello, World!"); },
+                PollEvent::Main(main_event) => {
+                    log::info!("Main event: {:?}", main_event);
+                    match main_event {
+                        MainEvent::Destroy => { return; }
+                        _ => {}
+                    }
+                },
+                _ => {}
+            }
+
+            app.input_events(|event| {
+                log::info!("Input Event: {event:?}");
+                InputStatus::Unhandled
+            });
+        });
+    }
 }
