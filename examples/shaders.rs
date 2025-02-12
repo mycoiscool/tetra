@@ -1,89 +1,89 @@
-use tetra::graphics::text::{Font, Text};
-use tetra::graphics::{self, Color, DrawParams, Shader, Texture};
+use tetra::{graphics::{self, mesh::{Mesh, ShapeStyle}, Color, Shader, Texture}, window};
 use tetra::math::Vec2;
-use tetra::{Context, ContextBuilder, State};
+use tetra::{Context, State};
+use std::time::Instant;
 
 struct GameState {
-    texture: Texture,
     shader: Shader,
-    text: Text,
-
-    timer: f32,
-    red: f32,
-    green: f32,
-    blue: f32,
+    texture: Texture,
+    start_time: Instant,
 }
 
 impl GameState {
     fn new(ctx: &mut Context) -> tetra::Result<GameState> {
-        let texture = Texture::new(ctx, "./examples/resources/player.png")?;
-        let overlay = Texture::new(ctx, "./examples/resources/overlay.png")?;
+        // Load the shader
+        let shader = load_noise_shader(ctx)?;
 
-        let shader = Shader::from_fragment_file(ctx, "./examples/resources/disco.frag")?;
-        shader.set_uniform(ctx, "u_overlay", overlay);
-
-        let text = Text::new(
-            "",
-            Font::vector(ctx, "./examples/resources/DejaVuSansMono.ttf", 32.0)?,
-        );
+        // Load a texture
+        let texture = Texture::new(ctx, "./examples/resources/dot.png")?;
 
         Ok(GameState {
-            texture,
             shader,
-            text,
-
-            timer: 0.0,
-            red: 0.0,
-            green: 0.0,
-            blue: 0.0,
+            texture,
+            start_time: Instant::now(),
         })
     }
 }
 
 impl State for GameState {
     fn update(&mut self, _ctx: &mut Context) -> tetra::Result {
-        self.timer += 1.0;
-
-        self.red = ((self.timer / 10.0).sin() + 1.0) / 2.0;
-        self.green = ((self.timer / 100.0).sin() + 1.0) / 2.0;
-        self.blue = ((self.timer / 1000.0).sin() + 1.0) / 2.0;
-
-        self.text.set_content(format!(
-            "Red: {:.2}\nGreen: {:.2}\nBlue: {:.2}",
-            self.red, self.green, self.blue
-        ));
-
+        // Update logic if needed
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> tetra::Result {
-        graphics::clear(ctx, Color::rgb(0.392, 0.584, 0.929));
+        use tetra::graphics::DrawParams;
 
+        graphics::clear(ctx, Color::BLACK);
+
+        let (width, height) = window::get_size(ctx);
+        let resolution = [width as f32, height as f32];
+        let time = self.start_time.elapsed().as_secs_f32();
+
+        // Set uniforms
+        self.shader.set_uniform(ctx, "iResolution", resolution);
+        self.shader.set_uniform(ctx, "iTime", time);
+/*         self.shader.set_uniform(ctx, "iChannel0", &self.texture); */
+
+        // Bind the shader
         graphics::set_shader(ctx, &self.shader);
 
-        self.shader.set_uniform(ctx, "u_red", self.red);
-        self.shader.set_uniform(ctx, "u_green", self.green);
-        self.shader.set_uniform(ctx, "u_blue", self.blue);
-
-        self.texture.draw(
+        // Draw fullscreen quad
+     /*    let mesh = Mesh::rectangle(
             ctx,
-            DrawParams::new()
-                .position(Vec2::new(640.0, 360.0))
-                .origin(Vec2::new(8.0, 8.0))
-                .scale(Vec2::new(24.0, 24.0)),
+            ShapeStyle::Fill,
+            graphics::Rectangle::new(0.0, 0.0, width as f32, height as f32),
         );
 
+        mesh.draw(ctx, DrawParams::new());
+ */
+        self.texture.draw(ctx, DrawParams {
+            position: Vec2::new(0.0, 0.0),
+            scale: Vec2::new(width as f32, height as f32 /2.0),
+            ..Default::default()
+        }); 
+        // Unbind the shader
         graphics::reset_shader(ctx);
-
-        self.text.draw(ctx, Vec2::new(16.0, 16.0));
 
         Ok(())
     }
 }
 
+
+
+
+fn load_noise_shader(ctx: &mut Context) -> tetra::Result<Shader> {
+/*     let vertex_source = include_str!("./examples/resources/vertex_shader.glsl");
+    let fragment_source = include_str!("./examples/resources/noise_shader.glsl");
+ */
+    Shader::from_fragment_file(ctx, "./examples/resources/noise_shader.frag")
+}
+
+
+use tetra::{ContextBuilder};
+
 fn main() -> tetra::Result {
-    ContextBuilder::new("Custom Shaders", 1280, 720)
-        .quit_on_escape(true)
+    ContextBuilder::new("Procedural Noise Shader", 800, 600)
         .build()?
         .run(GameState::new)
 }

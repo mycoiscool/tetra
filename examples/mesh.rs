@@ -1,6 +1,7 @@
 use tetra::graphics::mesh::{BufferUsage, Mesh, Vertex, VertexBuffer};
 use tetra::graphics::{self, Color, DrawParams, Texture};
 use tetra::math::Vec2;
+use tetra::time::set_frame_rate;
 use tetra::{Context, ContextBuilder, State};
 
 struct GameState {
@@ -29,6 +30,8 @@ impl GameState {
         let mut mesh = VertexBuffer::with_usage(ctx, vertices, BufferUsage::Static)?.into_mesh();
 
         mesh.set_texture(Texture::new(ctx, "./examples/resources/block.png")?);
+
+        set_frame_rate(ctx, 60.0);
 
         Ok(GameState { mesh, timer: 0.0 })
     }
