@@ -1,21 +1,29 @@
 // TODO: This file is getting way too huge.
 use std::path::PathBuf;
-use std::result;
+use std::{mem, result};
 
 use glow::Context as GlowContext;
 use hashbrown::HashMap;
+
+use ::raw_window_handle::{HasRawWindowHandle, HasWindowHandle, RawWindowHandle};
 use sdl2::controller::{Axis as SdlGamepadAxis, Button as SdlGamepadButton, GameController};
 use sdl2::event::{Event as SdlEvent, WindowEvent};
 use sdl2::keyboard::{Keycode, Mod, Scancode};
 use sdl2::mouse::{MouseButton as SdlMouseButton, MouseWheelDirection};
 use sdl2::pixels::PixelMasks;
+
 use sdl2::surface::Surface;
-use sdl2::sys::SDL_WINDOWPOS_CENTERED_MASK;
+use sdl2::sys::{SDL_bool, SDL_WINDOWPOS_CENTERED_MASK};
 use sdl2::video::{
     FullscreenType, GLContext as SdlGlContext, GLProfile, SwapInterval, Window as SdlWindow,
     WindowPos,
 };
-use sdl2::{EventPump, GameControllerSubsystem, JoystickSubsystem, Sdl, VideoSubsystem};
+
+use winapi::shared::windef::HWND;
+use winapi::um::winuser::{self, SetLayeredWindowAttributes}; 
+
+
+use sdl2::{raw_window_handle, EventPump, GameControllerSubsystem, JoystickSubsystem, Sdl, VideoSubsystem};
 
 use crate::error::{Result, TetraError};
 use crate::graphics::{self, ImageData};
@@ -183,6 +191,33 @@ impl Window {
         Ok((window, gl_ctx, window_width, window_height))
     }
 
+    pub fn make_transparent(&mut self) {
+        
+        match  self.sdl_window.window_handle() {
+            Ok(hw) => {
+                match hw.as_raw() {
+                    RawWindowHandle::Win32(handle) => {
+                        let hwnd = handle.hwnd;  
+        
+
+                        let hwnd = hwnd as HWND; 
+
+                        unsafe {
+                            SetLayeredWindowAttributes( hwnd, crKey, 0, dwFlags); 
+                        }
+                        
+                    }
+                    _ => ()
+                }
+            }
+            Err(_) => {
+
+            }
+        }
+       
+         
+    
+    }
     pub fn maximize(&mut self) {
         self.sdl_window.maximize();
     }
@@ -268,7 +303,7 @@ impl Window {
             width as u32,
             height as u32,
             width as u32 * 4,
-            PixelMasks {
+            &PixelMasks {
                 bpp: 32,
                 rmask: 0x000000FF,
                 gmask: 0x0000FF00,
@@ -486,6 +521,28 @@ impl Window {
         let sdl_keycode = Keycode::from_scancode(sdl_scancode)?;
         from_sdl_keycode(sdl_keycode)
     }
+
+
+/*     #[cfg(target_os = "windows")]
+    pub unsafe fn transparency(window: &mut Window) {
+        use sdl2::sys::{SDL_GetWindowWMInfo, SDL_SysWMinfo, SDL_version, SDL_Window};
+
+        let mut wm_info: SDL_SysWMinfo = mem::zeroed(); 
+      /*   SDL_version();  */
+
+
+        match SDL_GetWindowWMInfo(window.sdl_window.raw(), &mut wm_info) {
+            SDL_bool::SDL_FALSE => return, 
+            _=> ()
+        }
+
+      /*   let hwnd = wm_info.info.win.windows;  */
+/* 
+        window.sdl_window.window_h */
+        
+    }
+         */
+    
 }
 
 pub fn handle_events<S, E>(ctx: &mut Context, state: &mut S) -> result::Result<(), E>
