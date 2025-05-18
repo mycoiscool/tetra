@@ -18,7 +18,7 @@ rodio = { path = "../../extern/rodio", optional = true, default-features = false
 glow = "0.11.0"
 image = { version = "0.24.1", default-features = false }
 vek = { version = "0.15.4", default-features = false }
-hashbrown = "0.12.0"
+hashbrown = "0.15.3"
 serde = { version = "1.0.130", optional = true } 
 ab_glyph = { version = "0.2.2", optional = true }
 xi-unicode = "0.3.0"
