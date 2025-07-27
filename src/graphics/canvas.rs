@@ -5,7 +5,7 @@ use crate::graphics::{DrawParams, FilterMode, Texture};
 use crate::platform::{RawCanvas, RawRenderbuffer};
 use crate::Context;
 
-use super::{ImageData, TextureFormat};
+use super::{ImageData, Rectangle, TextureFormat};
 
 /// A builder for creating advanced canvas configurations.
 ///
@@ -156,6 +156,14 @@ impl Canvas {
         P: Into<DrawParams>,
     {
         self.texture.draw(ctx, params)
+    }
+
+    /// Draws a region of the canvas to the screen (or to another canvas, if one is enabled).
+    pub fn draw_region<P>(&self, ctx: &mut Context, region: Rectangle, params: P)
+    where
+        P: Into<DrawParams>,
+    {
+        self.texture.draw_region(ctx, region, params)
     }
 
     /// Returns the width of the canvas.

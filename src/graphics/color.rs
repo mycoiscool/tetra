@@ -171,8 +171,9 @@ impl Color {
     // the docs readable - don't want to have to scroll through a load of colors
     // to get to the methods!
 
+    
     ///Shortcut for [`Color::rgba(1.0, 1.0, 1.0, 0.5)`](Self::rgb).
-    pub const TRANSPARENT: Color = Color::rgba(1.0, 1.0, 1.0, 0.5);
+    pub const TRANSPARENT: Color = Color::rgba(1.0, 1.0, 1.0, 0.0);
     ///Shortcut for [`Color::rgb(0.7, 0.7, 0.7)`](Self::rgb).
     pub const GREY: Color = Color::rgb(0.7, 0.7, 0.7);
     /// Shortcut for [`Color::rgb(0.0, 0.0, 0.0)`](Self::rgb).
