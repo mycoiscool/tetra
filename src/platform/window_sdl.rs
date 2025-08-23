@@ -4,18 +4,18 @@ use std::result;
 
 use glow::Context as GlowContext;
 use hashbrown::HashMap;
-use sdl2::controller::{Axis as SdlGamepadAxis, Button as SdlGamepadButton, GameController};
-use sdl2::event::{Event as SdlEvent, WindowEvent};
-use sdl2::keyboard::{Keycode, Mod, Scancode};
-use sdl2::mouse::{MouseButton as SdlMouseButton, MouseWheelDirection};
-use sdl2::pixels::PixelMasks;
-use sdl2::surface::Surface;
-use sdl2::sys::SDL_WINDOWPOS_CENTERED_MASK;
-use sdl2::video::{
+use sdl3::controller::{Axis as SdlGamepadAxis, Button as SdlGamepadButton, GameController};
+use sdl3::event::{Event as SdlEvent, WindowEvent};
+use sdl3::keyboard::{Keycode, Mod, Scancode};
+use sdl3::mouse::{MouseButton as SdlMouseButton, MouseWheelDirection};
+use sdl3::pixels::PixelMasks;
+use sdl3::surface::Surface;
+use sdl3::sys::SDL_WINDOWPOS_CENTERED_MASK;
+use sdl3::video::{
     FullscreenType, GLContext as SdlGlContext, GLProfile, SwapInterval, Window as SdlWindow,
     WindowPos,
 };
-use sdl2::{EventPump, GameControllerSubsystem, JoystickSubsystem, Sdl, VideoSubsystem};
+use sdl3::{EventPump, GameControllerSubsystem, JoystickSubsystem, Sdl, VideoSubsystem};
 
 use crate::error::{Result, TetraError};
 use crate::graphics::{self, ImageData};
@@ -51,13 +51,13 @@ pub struct Window {
 
 impl Window {
     pub fn new(settings: &ContextBuilder) -> Result<(Window, GlowContext, i32, i32)> {
-        let sdl = sdl2::init().map_err(TetraError::PlatformError)?;
+        let sdl = sdl3::init().map_err(TetraError::PlatformError)?;
         let event_pump = sdl.event_pump().map_err(TetraError::PlatformError)?;
         let video_sys = sdl.video().map_err(TetraError::PlatformError)?;
         let joystick_sys = sdl.joystick().map_err(TetraError::PlatformError)?;
         let controller_sys = sdl.game_controller().map_err(TetraError::PlatformError)?;
 
-        sdl2::hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+        sdl3::hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
 
         let gl_attr = video_sys.gl_attr();
 
@@ -1047,7 +1047,7 @@ impl From<SdlGamepadAxis> for GamepadAxis {
 #[doc(hidden)]
 impl From<WindowPosition> for WindowPos {
     fn from(pos: WindowPosition) -> Self {
-        // This is a bit of a hack to work around the fact that sdl2-rs doesn't
+        // This is a bit of a hack to work around the fact that sdl3-rs doesn't
         // expose 'SDL_WINDOWPOS_CENTERED_DISPLAY' at all.
         match pos {
             WindowPosition::Centered(display_index) => {
