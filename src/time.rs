@@ -175,7 +175,7 @@ pub fn set_frame_rate(ctx: &mut Context, frame_rate: f64) {
 /// [`get_blend_factor_precise`].
 pub fn get_blend_factor(ctx: &Context) -> f32 {
     match ctx.time.tick_rate {
-        Some(_) => ctx.time.accumulator.as_seconds_f32() / Context::UPS_DURATION_SECS,
+        Some(n) => ctx.time.accumulator.as_seconds_f32() / n.as_seconds_f32(),
         None => 0.0,
     }
 }

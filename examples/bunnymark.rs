@@ -13,7 +13,7 @@ use tetra::time::Timestep;
 
 // NOTE: Using a high number here yields worse performance than adding more bunnies over
 // time - I think this is due to all of the RNG being run on the same tick...
-const INITIAL_BUNNIES: usize = 1000;
+const INITIAL_BUNNIES: usize = 150_000;
 const MAX_X: f32 = 1280.0 - 26.0;
 const MAX_Y: f32 = 720.0 - 37.0;
 const GRAVITY: f32 = 0.5;
@@ -54,7 +54,7 @@ impl GameState {
         for _ in 0..INITIAL_BUNNIES {
             bunnies.push(Bunny::new(&mut rng));
         }
-        set_frame_rate(ctx, 60.0); 
+        set_frame_rate(ctx, 130.0); 
 
         Ok(GameState {
             rng,
@@ -138,7 +138,7 @@ impl State for GameState {
 fn main() -> tetra::Result {
     ContextBuilder::new("BunnyMark", 1280, 720)
         .quit_on_escape(true)
-     
+        .vsync(true)
         .build()?
         .run(GameState::new)
 }
