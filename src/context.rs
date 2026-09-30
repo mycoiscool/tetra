@@ -10,11 +10,11 @@ use crate::platform::{self, GraphicsDevice, Window};
 use crate::time::{self, TimeContext, Timestep};
 
 #[cfg(feature = "developer")]
-use crate::time::{FrameTime, duration_to_frame};
+use crate::time::{duration_to_frame, FrameTime};
 
 use crate::{Result, State, TetraError};
 
-use ::time::{Duration, Instant}; 
+use ::time::{Duration, Instant};
 
 #[cfg(feature = "audio")]
 use crate::audio::AudioDevice;
@@ -39,7 +39,7 @@ impl Context {
         #[cfg(feature = "audio")]
         let audio = AudioDevice::new();
         #[cfg(feature = "audio")]
-        println!("Audio Enabled!"); 
+        println!("Audio Enabled!");
 
         let (window, gl_context, window_width, window_height) = Window::new(settings)?;
         let mut device = GraphicsDevice::new(gl_context)?;
@@ -138,231 +138,209 @@ impl Context {
         output
     }
 
-
     const FRAME_RATES: [Duration; 3] = [
+        Duration::nanoseconds(16666667),
+        Duration::nanoseconds(((1.0f64 / 120.0) * 1_000_000_000.0) as i64),
+        Duration::nanoseconds(((1.0f64 / 144.0) * 1_000_000_000.0) as i64),
+    ];
 
-        Duration::nanoseconds(16666667), 
-        Duration::nanoseconds(((1.0f64/120.0) * 1_000_000_000.0) as i64), 
-        Duration::nanoseconds(((1.0f64/144.0) * 1_000_000_000.0) as i64), 
-    ]; 
-
-    const AVERAGER_LEN: usize = 10; 
+    const AVERAGER_LEN: usize = 10;
 
     ///how fast game go
-    pub const UPS: f64 = 60.0; 
-    const NANOS_TO_SECOND: f64 =  1_000_000_000.0;
-    const UPS_DURATION: Duration =  Duration::nanoseconds(((1.0f64/Self::UPS) * Self::NANOS_TO_SECOND) as i64); 
-
+    pub const UPS: f64 = 60.0;
+    const NANOS_TO_SECOND: f64 = 1_000_000_000.0;
+    const UPS_DURATION: Duration =
+        Duration::nanoseconds(((1.0f64 / Self::UPS) * Self::NANOS_TO_SECOND) as i64);
 
     ///how fast 1 frame is
-    pub const UPS_DURATION_SECS: f32 = (1.0 / Self::UPS as f32); 
+    pub const UPS_DURATION_SECS: f32 = (1.0 / Self::UPS as f32);
 
-    const FUZZ: f64 = 1.0; 
-    const FUZZ_DURATION: Duration = Duration::nanoseconds(((1.0f64/(Self::UPS + Self::FUZZ)) * Self::NANOS_TO_SECOND) as i64); 
+    const FUZZ: f64 = 1.0;
+    const FUZZ_DURATION: Duration =
+        Duration::nanoseconds(((1.0f64 / (Self::UPS + Self::FUZZ)) * Self::NANOS_TO_SECOND) as i64);
 
-    const FUZZ_SUB_DURATION: Duration = Duration::nanoseconds(((1.0f64/(Self::UPS - Self::FUZZ)) * Self::NANOS_TO_SECOND) as i64); 
-    
+    const FUZZ_SUB_DURATION: Duration =
+        Duration::nanoseconds(((1.0f64 / (Self::UPS - Self::FUZZ)) * Self::NANOS_TO_SECOND) as i64);
 
+    pub(crate) fn game_loop<S, E>(&mut self, state: &mut S) -> result::Result<(), E>
+    where
+        S: State<E>,
+        E: From<TetraError>,
+    {
+        let mut last_time = Instant::now();
 
-     pub(crate) fn game_loop<S, E>(&mut self, state: &mut S) -> result::Result<(), E>
-        where
-            S: State<E>,
-            E: From<TetraError>,
-        {
-            let mut last_time = Instant::now();
+        while self.running {
+            let curr_time = Instant::now();
+            let diff_time = curr_time - last_time;
+            last_time = curr_time;
 
-            while self.running {
-                let curr_time = Instant::now();
-                let diff_time = curr_time - last_time;
-                last_time = curr_time;
+            self.time.fps_tracker.pop_front();
+            self.time.fps_tracker.push_back(diff_time.as_seconds_f64());
 
-                self.time.fps_tracker.pop_front();
-                self.time.fps_tracker.push_back(diff_time.as_seconds_f64());
+            platform::handle_events(self, state)?;
 
-                platform::handle_events(self, state)?;
+            match self.time.tick_rate {
+                Some(tick_rate) => {
+                    self.time.delta_time = tick_rate;
+                    self.time.accumulator = (self.time.accumulator + diff_time).min(tick_rate * 8);
 
-                match self.time.tick_rate {
-                    Some(tick_rate) => {
-                        self.time.delta_time = tick_rate;
-                        self.time.accumulator = (self.time.accumulator + diff_time).min(tick_rate * 8);
-
-                        while self.time.accumulator >= tick_rate {
-                            state.update(self)?;
-                            input::clear(self);
-
-                            self.time.accumulator -= tick_rate;
-                        }
-
-                        self.time.delta_time = diff_time;
-                    }
-
-                    None => {
-                        self.time.delta_time = diff_time;
-
+                    while self.time.accumulator >= tick_rate {
                         state.update(self)?;
                         input::clear(self);
+
+                        self.time.accumulator -= tick_rate;
                     }
+
+                    self.time.delta_time = diff_time;
                 }
 
-                state.draw(self)?;
+                None => {
+                    self.time.delta_time = diff_time;
 
-                graphics::present(self);
-
-
-                let sleep_timer = (Duration::seconds_f64(1.0 / self.time.frame_rate_cap) - curr_time.elapsed()).as_seconds_f64();
-
-                if sleep_timer > 0.0 {
-                    thread::sleep(std::time::Duration::from_secs_f64(sleep_timer));
+                    state.update(self)?;
+                    input::clear(self);
                 }
-
-                // This provides a sensible FPS limit when running without vsync, and
-                // avoids CPU usage skyrocketing on some systems.
-                // if self.fps_limit {
-                //     thread::sleep(Duration::from_millis(1));
-                // }
             }
 
-            Ok(())
+            state.draw(self)?;
+
+            graphics::present(self);
+
+            let sleep_timer = (Duration::seconds_f64(1.0 / self.time.frame_rate_cap)
+                - curr_time.elapsed())
+            .as_seconds_f64();
+
+            if sleep_timer > 0.0 {
+                thread::sleep(std::time::Duration::from_secs_f64(sleep_timer));
+            }
+
+            // This provides a sensible FPS limit when running without vsync, and
+            // avoids CPU usage skyrocketing on some systems.
+            // if self.fps_limit {
+            //     thread::sleep(Duration::from_millis(1));
+            // }
         }
+
+        Ok(())
     }
-        
+}
 
-    // pub(crate) fn game_loop<S, E>(&mut self, state: &mut S) -> result::Result<(), E>
-    // where
-    //     S: State<E>,
-    //     E: From<TetraError>,
-    // {
-    //     let mut last_time = Instant::now();
-        
-        
-    //     let mut curr_time: Instant; 
-    //     #[cfg(feature = "developer")]
-    //     {curr_time = Instant::now();}
-        
+// pub(crate) fn game_loop<S, E>(&mut self, state: &mut S) -> result::Result<(), E>
+// where
+//     S: State<E>,
+//     E: From<TetraError>,
+// {
+//     let mut last_time = Instant::now();
 
-    //     //let spin = spin_sleep::SpinSleeper::new(1_000_000);
+//     let mut curr_time: Instant;
+//     #[cfg(feature = "developer")]
+//     {curr_time = Instant::now();}
 
-    //     let mut  averager = VecDeque::new();//
-    //     averager.resize(Self::AVERAGER_LEN, Self::FRAME_RATES[0]); 
+//     //let spin = spin_sleep::SpinSleeper::new(1_000_000);
 
+//     let mut  averager = VecDeque::new();//
+//     averager.resize(Self::AVERAGER_LEN, Self::FRAME_RATES[0]);
 
+//     #[cfg(feature = "spin")]
+//     let spin = spin_sleep::SpinSleeper::new(1_000_000);
 
-    //     #[cfg(feature = "spin")]
-    //     let spin = spin_sleep::SpinSleeper::new(1_000_000);
-        
+//     println!("UPSDURATION: {}", Self::UPS_DURATION.as_seconds_f64());
 
-    //     println!("UPSDURATION: {}", Self::UPS_DURATION.as_seconds_f64()); 
+//     while self.running {
 
-    //     while self.running {
+//             #[cfg(feature = "developer")]
+//             { self.time.frame_time.back_mut().unwrap().array[4] = duration_to_frame(curr_time.elapsed()); }
 
-    //             #[cfg(feature = "developer")]
-    //             { self.time.frame_time.back_mut().unwrap().array[4] = duration_to_frame(curr_time.elapsed()); }
+//         curr_time = Instant::now();
+//         let diff_time = curr_time - last_time;
+//         last_time = curr_time;
 
-    //         curr_time = Instant::now();
-    //         let diff_time = curr_time - last_time;
-    //         last_time = curr_time;
+//         averager.pop_front();
+//         averager.push_back(diff_time);
 
-    //         averager.pop_front(); 
-    //         averager.push_back(diff_time); 
+//             #[cfg(feature = "drawcall_log")]
+//             println!("New Frame");
+//         //diff_time = averager.iter().fold(Duration::seconds(0), |acc, x| acc + *x) / Self::AVERAGER_LEN as f64;
 
-    //             #[cfg(feature = "drawcall_log")]
-    //             println!("New Frame"); 
-    //         //diff_time = averager.iter().fold(Duration::seconds(0), |acc, x| acc + *x) / Self::AVERAGER_LEN as f64; 
+//         self.time.fps_tracker.pop_front();
+//         self.time.fps_tracker.push_back(diff_time.as_seconds_f64());
 
-    //         self.time.fps_tracker.pop_front();
-    //         self.time.fps_tracker.push_back(diff_time.as_seconds_f64());
-            
+//             #[cfg(feature = "developer")]
+//             let mut frame_time = FrameTime{ array: [0.0; 5]};
 
-    //             #[cfg(feature = "developer")]
-    //             let mut frame_time = FrameTime{ array: [0.0; 5]}; 
+//         platform::handle_events(self, state)?;
 
-            
-    //         platform::handle_events(self, state)?;
+//             #[cfg(feature = "developer")]
+//             { frame_time.array[0] = duration_to_frame(curr_time.elapsed()); }
 
-    //             #[cfg(feature = "developer")]
-    //             { frame_time.array[0] = duration_to_frame(curr_time.elapsed()); }
-                
-    //         //let tick_rate; 
-    //         match self.time.tick_rate {
-    //             Some(_) => {
-    //                 //tick_rate = tr; 
-    //                 //self.time.delta_time = Self::UPS_DURATION;
-    //                 self.time.accumulator = (self.time.accumulator + diff_time).min(Self::UPS_DURATION * 8);
+//         //let tick_rate;
+//         match self.time.tick_rate {
+//             Some(_) => {
+//                 //tick_rate = tr;
+//                 //self.time.delta_time = Self::UPS_DURATION;
+//                 self.time.accumulator = (self.time.accumulator + diff_time).min(Self::UPS_DURATION * 8);
 
-    //                 while self.time.accumulator >= Self::FUZZ_DURATION {
+//                 while self.time.accumulator >= Self::FUZZ_DURATION {
 
-                        
-    //                     state.update(self)?;
-    //                     input::clear(self);
+//                     state.update(self)?;
+//                     input::clear(self);
 
-    //                     self.time.accumulator -=  Self::UPS_DURATION; 
-    //                     // self.time.accumulator = Self::UPS_DURATION *0.0; 
-    //                     if self.time.accumulator < (Self::FUZZ_SUB_DURATION - Self::UPS_DURATION) {
-    //                         self.time.accumulator = Duration::nanoseconds(0); 
-    //                     }
+//                     self.time.accumulator -=  Self::UPS_DURATION;
+//                     // self.time.accumulator = Self::UPS_DURATION *0.0;
+//                     if self.time.accumulator < (Self::FUZZ_SUB_DURATION - Self::UPS_DURATION) {
+//                         self.time.accumulator = Duration::nanoseconds(0);
+//                     }
 
+//                         #[cfg(feature = "developer")]
+//                         { frame_time.array[1] += duration_to_frame(curr_time.elapsed()); }
+//                 }
 
-                        
+//                 self.time.delta_time = diff_time;
+//             }
 
-    //                         #[cfg(feature = "developer")]
-    //                         { frame_time.array[1] += duration_to_frame(curr_time.elapsed()); }
-    //                 }
+//             None => {
+//                 self.time.delta_time = diff_time;
+//                 //tick_rate = Duration::seconds(1);
 
+//                 state.update(self)?;
+//                 input::clear(self);
 
-    //                 self.time.delta_time = diff_time;
-    //             }
+//                     #[cfg(feature = "developer")]
+//                         { frame_time.array[1] = duration_to_frame(curr_time.elapsed()); }
+//             }
+//         }
 
-    //             None => {
-    //                 self.time.delta_time = diff_time;
-    //                 //tick_rate = Duration::seconds(1); 
+//         state.draw(self)?;
+//             #[cfg(feature = "developer")]
+//             {frame_time.array[2] = duration_to_frame(curr_time.elapsed()); }
 
-    //                 state.update(self)?;
-    //                 input::clear(self);
+//         graphics::present(self);
+//             #[cfg(feature = "developer")]
+//             {
+//                 frame_time.array[3] = duration_to_frame(curr_time.elapsed());
+//                 self.time.frame_time.pop_front();
+//                 self.time.frame_time.push_back(frame_time);
+//             }
 
-    //                     #[cfg(feature = "developer")]
-    //                         { frame_time.array[1] = duration_to_frame(curr_time.elapsed()); }
-    //             }
-    //         }
+//         let sleep_timer = ( Duration::seconds_f64(1.0 / self.time.frame_rate_cap) - curr_time.elapsed()).as_seconds_f64();
 
-    //         state.draw(self)?;
-    //             #[cfg(feature = "developer")]
-    //             {frame_time.array[2] = duration_to_frame(curr_time.elapsed()); }
+//         //println!("Sleep_timer: {}", sleep_timer);
+//         if sleep_timer > 0.0 {
+//             #[cfg(feature = "spin")]
+//             spin.sleep_s(sleep_timer);
 
-    //         graphics::present(self);
-    //             #[cfg(feature = "developer")]
-    //             {  
-    //                 frame_time.array[3] = duration_to_frame(curr_time.elapsed()); 
-    //                 self.time.frame_time.pop_front(); 
-    //                 self.time.frame_time.push_back(frame_time); 
-    //             }
+//             #[cfg(not(feature = "spin"))]
+//             std::thread::sleep(std::time::Duration::from_secs_f64(sleep_timer));
 
+//         };
 
-            
+//         // This provides a sensible FPS limit when running without vsync, and
+//         // avoids CPU usage skyrocketing on some systems.
+//         //::sleep(Duration::from_millis(1));
+//     }
 
-
-    //         let sleep_timer = ( Duration::seconds_f64(1.0 / self.time.frame_rate_cap) - curr_time.elapsed()).as_seconds_f64(); 
-
-            
-            
-    //         //println!("Sleep_timer: {}", sleep_timer); 
-    //         if sleep_timer > 0.0 {
-    //             #[cfg(feature = "spin")]
-    //             spin.sleep_s(sleep_timer);
-
-    //             #[cfg(not(feature = "spin"))]
-    //             std::thread::sleep(std::time::Duration::from_secs_f64(sleep_timer));
-        
-    //         };
-
-    //         // This provides a sensible FPS limit when running without vsync, and
-    //         // avoids CPU usage skyrocketing on some systems.
-    //         //::sleep(Duration::from_millis(1));
-    //     }
-
-
-    //     Ok(())
-    // }
-
+//     Ok(())
+// }
 
 /// Settings that can be configured when starting up a game.
 ///
